@@ -399,6 +399,10 @@ export default function Reels() {
           <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-gray-900 dark:border-white pb-1 drop-shadow-md">
             Reels
           </span>
+          {/* Added the new routing link for the dedicated Match Center page */}
+          <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors drop-shadow-md">
+            Match Center
+          </Link>
         </div>
 
         {/* Right Authentication */}

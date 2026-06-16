@@ -293,9 +293,9 @@ export default function Home() {
           <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
             Reels
           </Link>
-          {/* Added the brand new routing link for the dedicated Live Scores page */}
-          <Link href="/live_updates" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Live Scores
+          {/* Added the brand new routing link for the dedicated Match Center page */}
+          <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
+            Match Center
           </Link>
         </div>
 

@@ -666,7 +666,7 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
     }
 });
 
-// 13 USER PREFERENCES ROUTES (Protected by authenticateToken)
+// 13. USER PREFERENCES ROUTES (Protected by authenticateToken)
 // These routes handle reading and saving the user's custom league selections for the Live Scores dashboard.
 
 // GET: Retrieve the user's saved leagues
@@ -731,88 +731,7 @@ app.post('/api/users/me/preferences', authenticateToken, (req, res) => {
     });
 });
 
-// 14. LIVE UPDATES GAME TRACKER ROUTE
-// This route returns pre-compiled real-time match statuses, scores, and active in-play tickers
-// pulled down from our background daemon sync process directly into your SQLite layer.
-// Added authenticateToken middleware. This route is now protected and personalized.
-app.get('/api/live-updates', authenticateToken, (req, res) => {
-    const userId = req.user.userId;
-
-    // First, look up the specific leagues the user has saved in their preferences. This will return an array of league_id strings 
-    // (e.g., ['nba', 'premier_league']).
-    db.all(`SELECT league_id FROM user_preferences WHERE user_id = ?`, [userId], (err, prefRows) => {
-        if (err) {
-            console.error("Database error retrieving preferences:", err.message);
-            return res.status(500).json({ error: 'Failed to retrieve user preferences.' });
-        }
-
-        // Extract just the league_id values into a simple array (e.g., ['nba', 'premier_league'])
-        const userLeagues = prefRows.map(row => row.league_id);
-
-        // If they haven't saved any preferences, return an empty array safely
-        if (userLeagues.length === 0) {
-            return res.status(200).json([]);
-        }
-
-        // This dictionary maps the frontend ID (e.g., 'premier_league') 
-        // to the exact string that our cron-scraper saves in the 'author' column.
-        const LEAGUE_MAPPING = {
-            'nba': 'NBA',
-            'mlb': 'MLB',
-            'nfl': 'NFL',
-            'nhl': 'NHL',
-            'atp': "Men's Tennis",
-            'wta': "Women's Tennis",
-            'f1': 'Formula 1',
-            'ufc': 'UFC',
-            'premier_league': 'Premier League',
-            'serie_a': 'Serie A',
-            'la_liga': 'La Liga',
-            'bundesliga': 'Bundesliga',
-            'ligue_1': 'Ligue 1',
-            'champions_league': 'UEFA Champions League',
-            'europa_league': 'UEFA Europa League',
-            'conference_league': 'UEFA Europa Conference League',
-            'world_cup': 'World Cup',
-            'euros': 'Euros',
-            'copa_america': 'Copa America',
-            'nations_league': 'UEFA Nations League'
-        };
-
-        // Convert their saved IDs into the actual database author names
-        const targetAuthors = userLeagues.map(id => LEAGUE_MAPPING[id]).filter(Boolean);
-
-        // Create the SQL IN clause dynamically (e.g., "?, ?, ?")
-        const placeholders = targetAuthors.map(() => '?').join(',');
-        
-        // Query the cache table, filtering ONLY for the author names the user requested
-        const sql = `SELECT * FROM live_updates WHERE author IN (${placeholders}) ORDER BY fetched_at DESC LIMIT 50`;
-
-        // Execute the query with the targetAuthors array as parameters. This will return all scores that match any of the 
-        // leagues the user has saved in their preferences.
-        db.all(sql, targetAuthors, (err, rows) => {
-            if (err) {
-                console.error("Database query error retrieving live-updates scoreboard:", err.message);
-                return res.status(500).json({ error: 'Failed to retrieve synchronized score tracking matrix.' });
-            }
-
-            // Format the rows into the structure expected by the frontend. We take each row from the database and create a new object that
-            // has the fields 'id', 'text', 'time', 'author', 'url', and 'image_url' based on the corresponding columns in the database.
-            const formattedFeed = rows.map(row => ({
-                id: row.id,
-                text: row.text,            
-                time: row.time_label,      
-                author: row.author,        
-                url: row.url,              
-                image_url: row.image_url   
-            }));
-
-            res.status(200).json(formattedFeed);
-        });
-    });
-});
-
-// 15. SERVER BINDING
+// 14. SERVER BINDING
 // Finally, we tell the Express app to bind to the port and start listening for traffic.
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
