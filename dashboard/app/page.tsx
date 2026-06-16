@@ -30,7 +30,7 @@ export default function Home() {
   // We track the ID of the post that was copied to show a temporary "Copied!" tooltip
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  // States for the Fan Zone Comment Drawer
+  // States for the Comment Drawer
   const [isCommentDrawerOpen, setIsCommentDrawerOpen] = useState(false);
   const [activePost, setActivePost] = useState<any>(null);
   const [comments, setComments] = useState<any[]>([]);
@@ -38,9 +38,26 @@ export default function Home() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Check login status for conditional rendering of input fields
+  // States for Editing/Deleting
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editCommentText, setEditCommentText] = useState("");
+
+  // Check login status and decode user ID for conditional rendering of input fields and edit/delete buttons
   useEffect(() => {
-    setIsAuthenticated(!!localStorage.getItem('glide_token'));
+    const token = localStorage.getItem('glide_token');
+    if (token) {
+      setIsAuthenticated(true);
+      try {
+        // Securely decode the JWT payload to get the user's ID
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setCurrentUserId(payload.userId);
+      } catch (e) {
+        console.error("Failed to parse token payload");
+      }
+    } else {
+      setIsAuthenticated(false);
+    }
   }, []);
 
   // 3. THE NETWORK REQUEST 
@@ -323,6 +340,59 @@ export default function Home() {
     }
   };
 
+  // Handlers for Editing and Deleting Comments
+  const handleEditSubmit = async (commentId: number) => {
+    if (!editCommentText.trim()) return;
+    const token = localStorage.getItem('glide_token');
+    
+    // PUT request to update the comment text in the database. We also optimistically update the UI to reflect the new comment text immediately.
+    try {
+      const res = await fetch(`http://localhost:3000/api/comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ text: editCommentText })
+      });
+
+      if (res.ok) {
+        // Update the UI instantly without reloading
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, text: editCommentText } : c));
+        setEditingCommentId(null);
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Failed to update comment.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!confirm("Are you sure you want to delete this take?")) return;
+    const token = localStorage.getItem('glide_token');
+
+    // DELETE request to remove the comment from the database. We also optimistically remove the comment from the UI and 
+    // decrement the comment counter on the main feed.
+    try {
+      const res = await fetch(`http://localhost:3000/api/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        // Remove from UI and decrement the counter
+        setComments(prev => prev.filter(c => c.id !== commentId));
+        setPosts(currentPosts => currentPosts.map(p => 
+          p.id === activePost.id ? { ...p, commentCount: Math.max(0, (p.commentCount || 1) - 1) } : p
+        ));
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Failed to delete comment.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // 7. DYNAMIC CATEGORY EXTRACTION
   // - We extract all categories from the posts array.
   // - We use 'new Set()' to remove duplicates (so if there are 5 Football posts, 'Football' only appears once).
@@ -475,7 +545,6 @@ export default function Home() {
                           <span className="text-sm font-semibold">{post.likes || 0}</span>
                         </button>
 
-                        {/* The New Fan Zone Trigger Button */}
                         <button 
                           onClick={() => openCommentDrawer(post)}
                           className="flex items-center space-x-1.5 text-gray-400 hover:text-purple-500 transition-colors group"
@@ -556,7 +625,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* The Sliding Fan Zone Comment Drawer */}
+      {/* The Sliding Comment Drawer */}
       {/* Background Overlay */}
       {isCommentDrawerOpen && (
         <div 
@@ -573,7 +642,7 @@ export default function Home() {
       >
         {/* Drawer Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-950/50">
-          <h2 className="text-lg font-bold">Fan Zone</h2>
+          <h2 className="text-lg font-bold">Comments</h2>
           <button 
             onClick={() => setIsCommentDrawerOpen(false)} 
             className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition"
@@ -604,27 +673,75 @@ export default function Home() {
               <p className="text-sm mt-1">Be the first to drop a comment!</p>
             </div>
           ) : (
-            comments.map(comment => (
-              <div key={comment.id} className="flex space-x-3">
-                <img 
-                  src={comment.picture || 'https://via.placeholder.com/40'} 
-                  alt={comment.name} 
-                  className="w-8 h-8 rounded-full shadow-sm" 
-                  referrerPolicy="no-referrer"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-bold text-sm">{comment.name}</span>
-                    <span className="text-[10px] text-gray-400">
-                      {new Date(comment.timestamp).toLocaleDateString()}
-                    </span>
+            // HIGHLIGHT: Upgraded Comment Mapping with Edit/Delete Controls
+            comments.map(comment => {
+              // Check if this comment belongs to the logged-in user
+              const isOwner = comment.user_id === currentUserId;
+              
+              // Calculate if it was posted less than 15 minutes ago (remembering DB is UTC)
+              const commentTime = new Date(comment.timestamp + 'Z').getTime();
+              const timeElapsedMinutes = (Date.now() - commentTime) / (1000 * 60);
+              const isWithinEditWindow = timeElapsedMinutes <= 15;
+  
+              return (
+                <div key={comment.id} className="flex space-x-3 group">
+                  <img 
+                    src={comment.picture || 'https://via.placeholder.com/40'} 
+                    alt={comment.name} 
+                    className="w-8 h-8 rounded-full shadow-sm mt-1" 
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-sm">{comment.name}</span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(comment.timestamp + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    
+                    {editingCommentId === comment.id ? (
+                      <div className="mt-2 flex flex-col space-y-2">
+                        <input 
+                          type="text" 
+                          value={editCommentText}
+                          onChange={(e) => setEditCommentText(e.target.value)}
+                          className="bg-gray-100 dark:bg-gray-800 border-none rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none w-full"
+                          autoFocus
+                        />
+                        <div className="flex space-x-2">
+                          <button onClick={() => handleEditSubmit(comment.id)} className="text-xs bg-purple-600 text-white px-3 py-1 rounded">Save</button>
+                          <button onClick={() => setEditingCommentId(null)} className="text-xs bg-gray-300 dark:bg-gray-700 px-3 py-1 rounded text-gray-800 dark:text-gray-200">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-start">
+                        <p className="text-sm mt-1 text-gray-800 dark:text-gray-200 break-words bg-gray-100 dark:bg-gray-800 p-3 rounded-xl rounded-tl-none inline-block">
+                          {comment.text}
+                        </p>
+                        
+                        {/* Action buttons (Only show if owner AND within 15 minutes) */}
+                        {isOwner && isWithinEditWindow && (
+                          <div className="flex space-x-3 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.text); }}
+                              className="text-[11px] font-semibold text-gray-500 hover:text-purple-500"
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteComment(comment.id)}
+                              className="text-[11px] font-semibold text-gray-500 hover:text-red-500"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm mt-1 text-gray-800 dark:text-gray-200 break-words bg-gray-100 dark:bg-gray-800 p-3 rounded-xl rounded-tl-none inline-block">
-                    {comment.text}
-                  </p>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

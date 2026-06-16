@@ -508,6 +508,70 @@ app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
     });
 });
 
+// Securely Edit a Comment (15 Minute Window)
+app.put('/api/comments/:id', authenticateToken, (req, res) => {
+    // This route allows a user to edit their comment, but only within a 15-minute window after posting. We first check if the 
+    // comment exists and if the requesting user is the author. Then we check if it's still within the allowed edit time frame 
+    // before allowing the update.
+    const commentId = req.params.id;
+    const userId = req.user.userId;
+    const { text } = req.body;
+
+    if (!text || text.trim() === '') return res.status(400).json({ error: 'Comment cannot be empty' });
+
+    // First, we fetch the comment to check ownership and timestamp
+    db.get(`SELECT * FROM comments WHERE id = ?`, [commentId], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Comment not found' });
+        
+        // Security Check 1: Is this the user who wrote it?
+        if (row.user_id !== userId) return res.status(403).json({ error: 'Unauthorized to edit this comment' });
+
+        // Security Check 2: Has it been less than 15 minutes?
+        // SQLite stores CURRENT_TIMESTAMP in UTC. We append 'Z' to ensure JS parses it correctly.
+        const commentTime = new Date(row.timestamp + 'Z').getTime();
+        const timeElapsedMinutes = (Date.now() - commentTime) / (1000 * 60);
+
+        if (timeElapsedMinutes > 15) {
+            return res.status(403).json({ error: 'The 15-minute edit window has expired.' });
+        }
+
+        // If both checks pass, we allow the update to proceed. We use a parameterized query to safely update the comment text.
+        db.run(`UPDATE comments SET text = ? WHERE id = ?`, [text, commentId], function(updateErr) {
+            if (updateErr) return res.status(500).json({ error: 'Failed to update comment' });
+            res.status(200).json({ success: true, text });
+        });
+    });
+});
+
+// Securely Delete a Comment (15 Minute Window)
+app.delete('/api/comments/:id', authenticateToken, (req, res) => {
+    const commentId = req.params.id;
+    const userId = req.user.userId;
+
+    // Similar to the edit route, we first check if the comment exists and if the requesting user is the author. 
+    // Then we check if it's still within the allowed deletion time frame before allowing the delete operation.
+    db.get(`SELECT * FROM comments WHERE id = ?`, [commentId], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Comment not found' });
+        
+        if (row.user_id !== userId) return res.status(403).json({ error: 'Unauthorized to delete this comment' });
+
+        const commentTime = new Date(row.timestamp + 'Z').getTime();
+        const timeElapsedMinutes = (Date.now() - commentTime) / (1000 * 60);
+
+        if (timeElapsedMinutes > 15) {
+            return res.status(403).json({ error: 'The 15-minute deletion window has expired.' });
+        }
+
+        // If both checks pass, we allow the delete to proceed. We use a parameterized query to safely delete the comment.
+        db.run(`DELETE FROM comments WHERE id = ?`, [commentId], function(delErr) {
+            if (delErr) return res.status(500).json({ error: 'Failed to delete comment' });
+            
+            // Adjust the post comment count downward dynamically
+            res.status(200).json({ success: true, postId: row.post_id });
+        });
+    });
+});
+
 
 // 12. REELS ROUTES (Videos)
 
@@ -673,7 +737,7 @@ app.get('/api/reels', (req, res) => {
 app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
-    // Define our 4 targeted SQL queries
+    // Define our 5 targeted SQL queries
     const queries = {
         likedPosts: `SELECT posts.*, 1 AS userLiked FROM posts 
                      INNER JOIN post_likes ON posts.id = post_likes.post_id 
@@ -689,7 +753,11 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
                      
         savedReels: `SELECT reels.*, 1 AS userSaved FROM reels 
                      INNER JOIN saved_reels ON reels.id = saved_reels.reel_id 
-                     WHERE saved_reels.user_id = ? ORDER BY reels.timestamp DESC`
+                     WHERE saved_reels.user_id = ? ORDER BY reels.timestamp DESC`,
+                     
+        userComments: `SELECT comments.*, posts.headline AS post_headline
+                       FROM comments INNER JOIN posts ON comments.post_id = posts.id 
+                       WHERE comments.user_id = ? ORDER BY comments.timestamp DESC`
     };
 
     // Helper function to wrap SQLite callbacks in modern Promises
@@ -709,13 +777,14 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
     };
 
     try {
-        // Execute all 4 database queries at the exact same time
+        // Execute all database queries at the exact same time
         // Promise.all takes an array of Promises and returns a new Promise that resolves when all of the input Promises have resolved.
-        const [likedPosts, savedPosts, likedReels, savedReels] = await Promise.all([
+        const [likedPosts, savedPosts, likedReels, savedReels, userComments] = await Promise.all([
             fetchQuery(queries.likedPosts, [userId]),
             fetchQuery(queries.savedPosts, [userId]),
             fetchQuery(queries.likedReels, [userId]),
-            fetchQuery(queries.savedReels, [userId])
+            fetchQuery(queries.savedReels, [userId]),
+            fetchQuery(queries.userComments, [userId]) 
         ]);
 
         // Send a massive, beautifully organized JSON payload back to the frontend
@@ -723,7 +792,8 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
             likedPosts,
             savedPosts,
             likedReels,
-            savedReels
+            savedReels,
+            userComments 
         });
     } catch (error) {
         console.error("Vault fetch error:", error);

@@ -1,4 +1,5 @@
 // app/profile/page.tsx
+
 "use client";
 
 // 1. IMPORTS
@@ -12,14 +13,17 @@ import ThemeToggle from '@/components/ThemeToggle';
 export default function ProfileVault() {
   // 2. STATE MANAGEMENT
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'likedPosts' | 'savedPosts' | 'likedReels' | 'savedReels'>('likedPosts');
   
-  // The master state holding all 4 arrays from the backend
+  // Added 'userComments' to the activeTab type
+  const [activeTab, setActiveTab] = useState<'likedPosts' | 'savedPosts' | 'likedReels' | 'savedReels' | 'userComments'>('likedPosts');
+  
+  // The master state holding all arrays from the backend
   const [vault, setVault] = useState({
     likedPosts: [],
     savedPosts: [],
     likedReels: [],
-    savedReels: []
+    savedReels: [],
+    userComments: []
   });
 
   // State to hold user profile information for display in the header
@@ -111,7 +115,8 @@ export default function ProfileVault() {
                 { id: 'likedPosts', label: 'Liked Posts' },
                 { id: 'savedPosts', label: 'Saved Posts' },
                 { id: 'likedReels', label: 'Liked Reels' },
-                { id: 'savedReels', label: 'Saved Reels' }
+                { id: 'savedReels', label: 'Saved Reels' },
+                { id: 'userComments', label: 'My Comments' }
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -123,7 +128,7 @@ export default function ProfileVault() {
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-900'
                   }`}
                 >
-                  {tab.label} <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-gray-700 dark:bg-gray-200' : 'bg-gray-200 dark:bg-gray-800/50'}`}>{vault[tab.id as keyof typeof vault].length}</span>
+                  {tab.label} <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-gray-700 dark:bg-gray-200' : 'bg-gray-200 dark:bg-gray-800/50'}`}>{vault[tab.id as keyof typeof vault]?.length || 0}</span>
                 </button>
               ))}
             </div>
@@ -141,7 +146,7 @@ export default function ProfileVault() {
                   <div key={item.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-md dark:shadow-lg flex flex-col h-full group hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
                     
                     {/* Render Post Layout */}
-                    {item.headline && (
+                    {item.headline && !item.text && (
                       <>
                         <div className="flex justify-between items-center mb-3">
                           <span className="bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest">
@@ -179,6 +184,38 @@ export default function ProfileVault() {
                         <h3 className="text-md font-bold mb-1 line-clamp-2 leading-tight">{item.title}</h3>
                         <p className="text-xs text-gray-400 mt-auto font-medium">@{item.channel_name}</p>
                     </Link>
+                    )}
+
+                    {/* HIGHLIGHT: Render the Custom Comment Layout */}
+                    {item.text && item.post_headline && (
+                      <>
+                        <div className="flex justify-between items-center mb-4">
+                          <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-[10px] font-bold px-2.5 py-0.5 rounded uppercase tracking-widest">
+                            Comment
+                          </span>
+                          <span className="text-gray-400 dark:text-gray-500 text-xs">
+                            {new Date(item.timestamp + 'Z').toLocaleDateString()}
+                          </span>
+                        </div>
+                        
+                        {/* The Comment Bubble */}
+                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 rounded-xl rounded-tl-none mb-4 relative">
+                          <svg className="w-6 h-6 text-gray-200 dark:text-gray-700 absolute -top-3 -left-1 transform -rotate-12" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M10 3a1 1 0 01.832.445l8 12a1 1 0 01-.832 1.555h-16a1 1 0 01-.832-1.555l8-12A1 1 0 0110 3z" />
+                          </svg>
+                          <p className="text-sm text-gray-800 dark:text-gray-200 font-medium italic relative z-10 break-words">
+                            "{item.text}"
+                          </p>
+                        </div>
+
+                        {/* The Context of what they commented on */}
+                        <div className="mt-auto border-t border-gray-100 dark:border-gray-800 pt-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase tracking-wider">On Post:</p>
+                          <h3 className="text-sm font-bold line-clamp-2 leading-snug text-gray-700 dark:text-gray-300">
+                            {item.post_headline}
+                          </h3>
+                        </div>
+                      </>
                     )}
 
                   </div>
