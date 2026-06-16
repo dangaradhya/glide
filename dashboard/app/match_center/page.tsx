@@ -16,6 +16,7 @@ interface League {
   color: string;
 }
 
+// List of popular leagues with their official live score URLs and custom gradient colors for the dashboard cards
 const AVAILABLE_LEAGUES: League[] = [
   { id: 'nba', name: 'NBA', category: 'Basketball', url: 'https://www.espn.com/nba/scoreboard', color: 'from-orange-400 to-red-500' },
   { id: 'mlb', name: 'MLB', category: 'Baseball', url: 'https://www.espn.com/mlb/scoreboard', color: 'from-blue-600 to-blue-900' },
@@ -39,16 +40,20 @@ const AVAILABLE_LEAGUES: League[] = [
   { id: 'nations_league', name: 'UEFA Nations League', category: 'Intl Football', url: 'https://www.fotmob.com/leagues/9806/overview/uefa-nations-league', color: 'from-slate-600 to-slate-900' },
 ];
 
+// The main Match Center component that allows users to select their favorite leagues and provides quick access to official live score pages
 export default function LiveUpdatesPage() {
+  // 1. STATE MANAGEMENT
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [preferences, setPreferences] = useState<string[]>([]);
   const [isEditingPreferences, setIsEditingPreferences] = useState<boolean>(false);
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>([]);
   const [preferencesLoading, setPreferencesLoading] = useState<boolean>(true);
 
+  // 2. EFFECT TO CHECK AUTHENTICATION AND FETCH PREFERENCES
   useEffect(() => {
     const token = localStorage.getItem('glide_token');
     
+    // If no token is found, the user is not authenticated, so we can skip fetching preferences
     if (!token) {
       setIsAuthenticated(false);
       setPreferencesLoading(false);
@@ -57,6 +62,7 @@ export default function LiveUpdatesPage() {
     
     setIsAuthenticated(true);
 
+    // Fetch user preferences to determine which leagues they have selected
     fetch('http://localhost:3000/api/users/me/preferences', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
@@ -76,6 +82,7 @@ export default function LiveUpdatesPage() {
       });
   }, []);
 
+  // 3. HANDLERS FOR TOGGLING LEAGUE SELECTION AND SAVING PREFERENCES
   const toggleLeagueSelection = (leagueId: string) => {
     setSelectedLeagues(prev => 
       prev.includes(leagueId) ? prev.filter(id => id !== leagueId) : [...prev, leagueId]
@@ -86,6 +93,7 @@ export default function LiveUpdatesPage() {
     const token = localStorage.getItem('glide_token');
     if (!token) return;
 
+    // Save the selected leagues to the backend and update the local state
     try {
       const res = await fetch('http://localhost:3000/api/users/me/preferences', {
         method: 'POST',
@@ -136,6 +144,7 @@ export default function LiveUpdatesPage() {
           </span>
         </div>
 
+        {/* Main Content Area - Conditional rendering based on authentication and preferences state */}
         {(isAuthenticated === null || preferencesLoading) ? (
           <div className="flex justify-center items-center h-64">
              <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>

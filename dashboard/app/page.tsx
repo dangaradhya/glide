@@ -30,6 +30,19 @@ export default function Home() {
   // We track the ID of the post that was copied to show a temporary "Copied!" tooltip
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
+  // States for the Fan Zone Comment Drawer
+  const [isCommentDrawerOpen, setIsCommentDrawerOpen] = useState(false);
+  const [activePost, setActivePost] = useState<any>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check login status for conditional rendering of input fields
+  useEffect(() => {
+    setIsAuthenticated(!!localStorage.getItem('glide_token'));
+  }, []);
+
   // 3. THE NETWORK REQUEST 
   // Refactored Fetch Logic to accept a page number
   const fetchPosts = async (pageNum: number) => {
@@ -251,6 +264,65 @@ export default function Home() {
     }
   };
 
+  // The Logic for fetching and submitting comments from the drawer
+  const openCommentDrawer = async (post: any) => {
+    // When a user clicks the comment button, we set the active post, open the drawer, and fetch the comments for that specific post.
+    setActivePost(post);
+    setIsCommentDrawerOpen(true);
+    setCommentsLoading(true);
+
+    // We make a GET request to fetch comments for the specific post ID. The backend should return an array of comments related to that post.
+    try {
+      const res = await fetch(`http://localhost:3000/api/posts/${post.id}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data);
+      }
+    } catch (err) {
+      console.error("Error fetching comments:", err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  // The function to submit a new comment from the drawer input
+  const submitComment = async (e: React.FormEvent<HTMLFormElement>) => {
+    // We prevent the default form submission behavior, check if the comment text is not empty and if there's an active post to comment on.
+    e.preventDefault();
+    if (!newCommentText.trim() || !activePost) return;
+
+    const token = localStorage.getItem('glide_token');
+    if (!token) return alert("Please log in to comment.");
+
+    // We make a POST request to submit the new comment to the backend. The body of the request includes the comment text, and we attach the token for authentication.
+    try {
+      const res = await fetch(`http://localhost:3000/api/posts/${activePost.id}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ text: newCommentText })
+      });
+
+      if (res.ok) {
+        const newCommentObj = await res.json();
+        // Instantly push the new comment to the drawer UI
+        setComments(prev => [...prev, newCommentObj]);
+        setNewCommentText("");
+        
+        // Optimistically increment the comment counter on the main feed
+        setPosts(currentPosts => currentPosts.map(p => 
+          p.id === activePost.id ? { ...p, commentCount: (p.commentCount || 0) + 1 } : p
+        ));
+      } else {
+        alert("Failed to post comment.");
+      }
+    } catch (err) {
+      console.error("Error submitting comment:", err);
+    }
+  };
+
   // 7. DYNAMIC CATEGORY EXTRACTION
   // - We extract all categories from the posts array.
   // - We use 'new Set()' to remove duplicates (so if there are 5 Football posts, 'Football' only appears once).
@@ -266,7 +338,7 @@ export default function Home() {
   return (
     // Adjusted background/text colors for Light/Dark mode with a smooth transition
     // Adjusted max-w constraints on wrapper wrapper block to hold large layouts comfortably
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative transition-colors duration-300">
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative transition-colors duration-300 overflow-hidden">
       
       {/* Changed max-w-6xl to max-w-3xl to perfectly center the single-column feed */}
       <div className="max-w-3xl mx-auto">
@@ -299,7 +371,7 @@ export default function Home() {
           </Link>
         </div>
 
-        {/* HIGHLIGHT: Removed the grid-cols layout entirely. The feed now beautifully centers itself. */}
+        {/* Removed the grid-cols layout entirely. The feed now beautifully centers itself. */}
         <div className="w-full">
           
           {/* 8. CONDITIONAL RENDERING */}
@@ -403,6 +475,18 @@ export default function Home() {
                           <span className="text-sm font-semibold">{post.likes || 0}</span>
                         </button>
 
+                        {/* The New Fan Zone Trigger Button */}
+                        <button 
+                          onClick={() => openCommentDrawer(post)}
+                          className="flex items-center space-x-1.5 text-gray-400 hover:text-purple-500 transition-colors group"
+                          title="View Discussion"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                          <span className="text-sm font-semibold">{post.commentCount || 0}</span>
+                        </button>
+
                         {/* The Bookmark Button */}
                         <button 
                           onClick={() => handleSave(post.id)}
@@ -444,7 +528,7 @@ export default function Home() {
                           href={post.url} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="text-sm text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-medium"
+                          className="text-sm text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-medium hidden sm:block"
                         >
                           Read Source &rarr;
                         </a>
@@ -471,6 +555,108 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* The Sliding Fan Zone Comment Drawer */}
+      {/* Background Overlay */}
+      {isCommentDrawerOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-40 transition-opacity" 
+          onClick={() => setIsCommentDrawerOpen(false)}
+        />
+      )}
+
+      {/* The Drawer Panel */}
+      <div 
+        className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-white dark:bg-gray-900 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200 dark:border-gray-800 ${
+          isCommentDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Drawer Header */}
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-950/50">
+          <h2 className="text-lg font-bold">Fan Zone</h2>
+          <button 
+            onClick={() => setIsCommentDrawerOpen(false)} 
+            className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Post Context Banner */}
+        {activePost && (
+          <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-gray-200 dark:border-gray-800">
+            <p className="text-xs text-purple-600 dark:text-purple-400 font-bold uppercase mb-1">Discussing</p>
+            <p className="text-sm font-semibold line-clamp-2">{activePost.headline}</p>
+          </div>
+        )}
+
+        {/* Comment Thread Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {commentsLoading ? (
+            <div className="flex justify-center mt-10">
+              <div className="w-6 h-6 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : comments.length === 0 ? (
+            <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
+              <p>No takes on this yet.</p>
+              <p className="text-sm mt-1">Be the first to drop a comment!</p>
+            </div>
+          ) : (
+            comments.map(comment => (
+              <div key={comment.id} className="flex space-x-3">
+                <img 
+                  src={comment.picture || 'https://via.placeholder.com/40'} 
+                  alt={comment.name} 
+                  className="w-8 h-8 rounded-full shadow-sm" 
+                  referrerPolicy="no-referrer"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-sm">{comment.name}</span>
+                    <span className="text-[10px] text-gray-400">
+                      {new Date(comment.timestamp).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p className="text-sm mt-1 text-gray-800 dark:text-gray-200 break-words bg-gray-100 dark:bg-gray-800 p-3 rounded-xl rounded-tl-none inline-block">
+                    {comment.text}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Comment Input Footer */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+          {!isAuthenticated ? (
+            <div className="text-center p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Sign in to join the conversation.</p>
+            </div>
+          ) : (
+            <form onSubmit={submitComment} className="flex items-center space-x-2">
+              <input 
+                type="text" 
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                placeholder="Drop a take..."
+                className="flex-1 bg-gray-100 dark:bg-gray-800 border-none rounded-full px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+              />
+              <button 
+                type="submit" 
+                disabled={!newCommentText.trim()}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-full p-2.5 transition-colors shadow-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+      
     </main>
   );
 }

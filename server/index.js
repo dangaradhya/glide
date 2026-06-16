@@ -161,6 +161,22 @@ const db = new sqlite3.Database('./glide.sqlite', (err) => {
             if (err) console.error('Error creating user_preferences table:', err.message);
             else console.log('User preferences table ready.');
         });
+
+        // COMMENTS TABLE (For the new Fan Zone feature)
+        db.run(`
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER,
+                user_id INTEGER,
+                text TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(post_id) REFERENCES posts(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        `, (err) => {
+            if (err) console.error('Error creating comments table:', err.message);
+            else console.log('Comments table ready.');
+        });
     }
 });
 
@@ -288,15 +304,14 @@ app.get('/api/posts', (req, res) => {
     }
 
     // Dynamic SQL based on Auth Status
-    // If we have a userId, we ask SQLite to check the post_likes junction table for a match.
-    // This way, each post in the feed will come back with an extra field 'userLiked' that is true if this user has liked it, and false otherwise.
-    // We do the same for 'userSaved' by checking the saved_posts junction table. If we don't have a userId, we just return 0 for both fields.
     const sql = userId 
         ? `SELECT posts.*, 
              EXISTS(SELECT 1 FROM post_likes WHERE post_id = posts.id AND user_id = ?) AS userLiked,
-             EXISTS(SELECT 1 FROM saved_posts WHERE post_id = posts.id AND user_id = ?) AS userSaved
+             EXISTS(SELECT 1 FROM saved_posts WHERE post_id = posts.id AND user_id = ?) AS userSaved,
+             (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
            FROM posts ORDER BY timestamp DESC LIMIT ? OFFSET ?`
-        : `SELECT posts.*, 0 AS userLiked, 0 AS userSaved 
+        : `SELECT posts.*, 0 AS userLiked, 0 AS userSaved,
+             (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount 
            FROM posts ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
 
     // The parameters we pass to the database depend on whether we have a userId or not. 
@@ -444,7 +459,57 @@ app.post('/api/reels/:id/save', authenticateToken, (req, res) => {
     });
 });
 
-// 11. REELS ROUTES (Videos)
+// 11. COMMENTS ROUTES (The Fan Zone)
+
+// GET route to fetch comments for a specific post. This will be used in the Fan Zone section of the app where users can read and post comments on each news article.
+app.get('/api/posts/:id/comments', (req, res) => {
+    const postId = req.params.id;
+    // We join the users table so we can display their Google avatar and name next to their comment!
+    const sql = `
+        SELECT comments.*, users.name, users.picture 
+        FROM comments 
+        JOIN users ON comments.user_id = users.id 
+        WHERE post_id = ? 
+        ORDER BY timestamp ASC
+    `;
+    db.all(sql, [postId], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error fetching comments' });
+        res.status(200).json(rows);
+    });
+});
+
+// POST route to submit a new comment on a post. This is also part of the Fan Zone feature, allowing users to engage with each news article by sharing their thoughts.
+app.post('/api/posts/:id/comments', authenticateToken, (req, res) => {
+    // When a user submits a comment on a post, the frontend will send a POST request to this endpoint with the comment text.
+    // We extract the post ID from the URL parameters, the user ID from the authenticated JWT token, and the comment text from the request body.
+    const postId = req.params.id;
+    const userId = req.user.userId;
+    const { text } = req.body;
+
+    if (!text || text.trim() === '') return res.status(400).json({ error: 'Comment cannot be empty' });
+
+    // We insert the new comment into the comments table, associating it with the post ID and user ID. After inserting, we immediately 
+    // fetch the newly created comment along with the user's name and picture so we can return it in the response. 
+    // This allows the frontend to append the new comment to the list without needing to refresh.
+    const sql = `INSERT INTO comments (post_id, user_id, text) VALUES (?, ?, ?)`;
+    db.run(sql, [postId, userId, text], function(err) {
+        if (err) return res.status(500).json({ error: 'Failed to post comment' });
+        
+        // Immediately fetch the newly created comment with the user's data so the frontend can append it instantly
+        db.get(`
+            SELECT comments.*, users.name, users.picture 
+            FROM comments 
+            JOIN users ON comments.user_id = users.id 
+            WHERE comments.id = ?
+        `, [this.lastID], (fetchErr, row) => {
+            if (fetchErr) return res.status(500).json({ error: 'Failed to retrieve new comment' });
+            res.status(201).json(row);
+        });
+    });
+});
+
+
+// 12. REELS ROUTES (Videos)
 
 // These routes follow the same pattern as the posts routes. 
 // We have a check route to prevent duplicates, a POST route to create new reels, 
@@ -602,7 +667,7 @@ app.get('/api/reels', (req, res) => {
     });
 });
 
-// 12. THE VAULT (User Profile Data)
+// 13. THE VAULT (User Profile Data)
 // This route fetches everything a user has interacted with. 
 // It requires the 'authenticateToken' bouncer to ensure we know exactly who is asking.
 app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
@@ -666,7 +731,7 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
     }
 });
 
-// 13. USER PREFERENCES ROUTES (Protected by authenticateToken)
+// 14. USER PREFERENCES ROUTES (Protected by authenticateToken)
 // These routes handle reading and saving the user's custom league selections for the Live Scores dashboard.
 
 // GET: Retrieve the user's saved leagues
@@ -731,7 +796,7 @@ app.post('/api/users/me/preferences', authenticateToken, (req, res) => {
     });
 });
 
-// 14. SERVER BINDING
+// 15. SERVER BINDING
 // Finally, we tell the Express app to bind to the port and start listening for traffic.
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
