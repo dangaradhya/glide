@@ -21,6 +21,21 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Glide", 
   description: "AI-Powered Sports Aggregator & Highlight Reels",
+  // Added PWA configuration for native app deployment
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Glide",
+  },
+};
+
+// Added Viewport configuration for mobile responsiveness and edge-to-edge safe areas
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover", // Essential for safe-area-inset variables to work correctly on iOS/Android
 };
 
 // RootLayout now wraps the entire app with GoogleOAuthProvider for seamless authentication across all pages.

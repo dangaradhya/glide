@@ -1,4 +1,4 @@
-// app/live_updates/page.tsx
+// app/match_center/page.tsx
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -136,11 +136,12 @@ export default function LiveUpdatesPage() {
     .filter(Boolean) as League[];
 
   return (
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative transition-colors duration-300">
+    // Injected pt-[max(1rem,env(safe-area-inset-top))] to clear the device notch
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative transition-colors duration-300">
       <div className="max-w-4xl mx-auto">
         
         {/* Header Section */}
-        <div className="flex items-center justify-between mb-4"> 
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
             Glide
           </h1>

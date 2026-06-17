@@ -1,0 +1,46 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" data-fg-d3bl4="0.8:1.13439:/src/app/App.tsx:54:9:1658:5277:e:svg:etxtete" data-fgid-d3bl4=":rc:"><defs data-fg-d3bl5="0.8:1.13439:/src/app/App.tsx:61:11:1834:2561:e:defs:xtetxtetxtetxtetxtetetxte"><radialGradient id="tileBg" cx="45%" cy="40%" r="65%" data-fg-d3bl7="0.8:1.13439:/src/app/App.tsx:63:13:1889:198:e:radialGradient:ete"><stop offset="0%" stop-color="#161628" data-fg-d3bl8="0.8:1.13439:/src/app/App.tsx:64:15:1958:42:e:stop"></stop><stop offset="100%" stop-color="#0A0A16" data-fg-d3bl9="0.8:1.13439:/src/app/App.tsx:65:15:2015:42:e:stop"></stop></radialGradient><linearGradient id="streakMain" x1="0%" y1="100%" x2="100%" y2="0%" data-fg-d3bl11="0.8:1.13439:/src/app/App.tsx:69:13:2169:269:e:linearGradient:etete"><stop offset="0%" stop-color="#1D4ED8" data-fg-d3bl12="0.8:1.13439:/src/app/App.tsx:70:15:2252:42:e:stop"></stop><stop offset="48%" stop-color="#5B21B6" data-fg-d3bl13="0.8:1.13439:/src/app/App.tsx:71:15:2309:42:e:stop"></stop><stop offset="100%" stop-color="#7C3AED" data-fg-d3bl14="0.8:1.13439:/src/app/App.tsx:72:15:2366:42:e:stop"></stop></linearGradient><linearGradient id="streakTrail" x1="0%" y1="100%" x2="100%" y2="0%" data-fg-d3bl16="0.8:1.13439:/src/app/App.tsx:76:13:2513:251:e:linearGradient:ete"><stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35" data-fg-d3bl17="0.8:1.13439:/src/app/App.tsx:77:15:2597:61:e:stop"></stop><stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.18" data-fg-d3bl18="0.8:1.13439:/src/app/App.tsx:78:15:2673:61:e:stop"></stop></linearGradient><linearGradient id="sheen" x1="0%" y1="0%" x2="100%" y2="100%" data-fg-d3bl20="0.8:1.13439:/src/app/App.tsx:82:13:2812:240:e:linearGradient:ete"><stop offset="0%" stop-color="#ffffff" stop-opacity="0.18" data-fg-d3bl21="0.8:1.13439:/src/app/App.tsx:83:15:2890:60:e:stop"></stop><stop offset="50%" stop-color="#ffffff" stop-opacity="0" data-fg-d3bl22="0.8:1.13439:/src/app/App.tsx:84:15:2965:57:e:stop"></stop></linearGradient><linearGradient id="shimmerG" x1="0" y1="0" x2="1024" y2="0" gradientUnits="userSpaceOnUse" data-fg-d3bl24="0.8:1.13439:/src/app/App.tsx:88:13:3114:490:e:linearGradient:etetetete"><stop offset="0%" stop-color="#ffffff" stop-opacity="0" data-fg-d3bl25="0.8:1.13439:/src/app/App.tsx:89:15:3221:58:e:stop"></stop><stop offset="42%" stop-color="#ffffff" stop-opacity="0" data-fg-d3bl26="0.8:1.13439:/src/app/App.tsx:90:15:3294:58:e:stop"></stop><stop offset="50%" stop-color="#a5b4fc" stop-opacity="0.55" data-fg-d3bl27="0.8:1.13439:/src/app/App.tsx:91:15:3367:61:e:stop"></stop><stop offset="58%" stop-color="#ffffff" stop-opacity="0" data-fg-d3bl28="0.8:1.13439:/src/app/App.tsx:92:15:3443:58:e:stop"></stop><stop offset="100%" stop-color="#ffffff" stop-opacity="0" data-fg-d3bl29="0.8:1.13439:/src/app/App.tsx:93:15:3516:58:e:stop"></stop></linearGradient><clipPath id="tile" data-fg-d3bl30="0.8:1.13439:/src/app/App.tsx:96:13:3618:103:e:clipPath:e"><rect width="1024" height="1024" rx="220" data-fg-d3bl31="0.8:1.13439:/src/app/App.tsx:97:15:3653:44:e:rect"></rect></clipPath><clipPath id="streakClip" data-fg-d3bl33="0.8:1.13439:/src/app/App.tsx:101:13:3789:588:e:clipPath:xte"><path d="
+                M 636 192
+                C 668 228 654 320 618 408
+                C 582 494 524 570 468 636
+                C 412 702 346 762 306 808
+                C 278 838 268 868 290 888
+                C 312 908 350 904 386 880
+                C 438 848 504 794 570 726
+                C 636 658 698 578 736 492
+                C 774 406 784 308 762 236
+                C 750 196 720 170 692 172
+                C 664 174 636 192 636 192 Z
+              " data-fg-d3bl35="0.8:1.13439:/src/app/App.tsx:103:15:3877:476:e:path"></path></clipPath></defs><rect width="1024" height="1024" rx="220" fill="url(#tileBg)" data-fg-d3bl37="0.8:1.13439:/src/app/App.tsx:120:11:4430:64:e:rect"></rect><g clip-path="url(#tile)" data-fg-d3bl38="0.8:1.13439:/src/app/App.tsx:122:11:4506:2414:e:g:xtxtetxtetxtetxte"><path d="
+                M 510 310
+                C 534 340 524 408 500 472
+                C 476 536 434 598 398 650
+                C 362 702 316 750 288 790
+                C 270 814 268 838 286 850
+                C 304 862 330 856 358 836
+                C 398 810 446 768 490 714
+                C 534 660 574 598 598 530
+                C 622 462 624 386 604 330
+                C 594 302 574 286 556 288
+                C 538 290 510 310 510 310 Z
+              " fill="url(#streakTrail)" data-fg-d3bl41="0.8:1.13439:/src/app/App.tsx:131:13:4918:541:e:path"></path><path id="mainStreak" d="
+                M 636 192
+                C 668 228 654 320 618 408
+                C 582 494 524 570 468 636
+                C 412 702 346 762 306 808
+                C 278 838 268 868 290 888
+                C 312 908 350 904 386 880
+                C 438 848 504 794 570 726
+                C 636 658 698 578 736 492
+                C 774 406 784 308 762 236
+                C 750 196 720 170 692 172
+                C 664 174 636 192 636 192 Z
+              " fill="url(#streakMain)" data-fg-d3bl43="0.8:1.13439:/src/app/App.tsx:149:13:5511:570:e:path"></path><path d="
+                M 636 192
+                C 668 228 654 320 618 408
+                C 582 494 524 570 468 636
+                C 412 700 348 760 308 806
+                C 320 790 360 748 410 690
+                C 468 624 528 546 572 462
+                C 614 380 640 278 628 198
+                C 630 194 633 192 636 192 Z
+              " fill="url(#sheen)" data-fg-d3bl45="0.8:1.13439:/src/app/App.tsx:168:13:6148:409:e:path"></path><g clip-path="url(#streakClip)" data-fg-d3bl47="0.8:1.13439:/src/app/App.tsx:183:13:6639:266:e:g:e"><rect x="-512" y="0" width="1024" height="1024" fill="url(#shimmerG)" style="will-change: transform; transition: transform 1.2s cubic-bezier(0.22, 0, 0.5, 1); transform: translateX(1100px);" data-fg-d3bl48="0.8:1.13439:/src/app/App.tsx:184:15:6685:203:e:rect"></rect></g></g></svg>

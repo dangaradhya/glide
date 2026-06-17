@@ -477,7 +477,8 @@ export default function Home() {
   return (
     // Adjusted background/text colors for Light/Dark mode with a smooth transition
     // Adjusted max-w constraints on wrapper wrapper block to hold large layouts comfortably
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative transition-colors duration-300 overflow-hidden">
+    // Injected pt-[max(1rem,env(safe-area-inset-top))] to push UI below the physical phone notch
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative transition-colors duration-300 overflow-hidden">
       
       {/* Changed max-w-6xl to max-w-3xl to perfectly center the single-column feed */}
       <div className="max-w-3xl mx-auto relative z-10">

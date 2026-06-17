@@ -385,7 +385,8 @@ export default function Reels() {
       
       {/* Top Navigation Bar with AuthButton integration */}
       {/* Adapted the gradient overlay for both light and dark themes */}
-      <div className="absolute top-0 w-full z-50 p-6 flex justify-between items-start bg-gradient-to-b from-gray-100/90 dark:from-black/80 to-transparent pointer-events-none">
+      {/* Added pt-[max(1.5rem,env(safe-area-inset-top))] to push header icons below the notch */}
+      <div className="absolute top-0 w-full z-50 p-6 pt-[max(1.5rem,env(safe-area-inset-top))] flex justify-between items-start bg-gradient-to-b from-gray-100/90 dark:from-black/80 to-transparent pointer-events-none">
         
         {/* Empty left section to balance the flexbox */}
         <div className="w-1/3"></div>

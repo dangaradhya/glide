@@ -73,7 +73,8 @@ export default function ProfileVault() {
 
   return (
     // Dynamic bg-gray-100/bg-gray-950 classes for Light/Dark mode
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 transition-colors duration-300">
+    // Injected pt-[max(1rem,env(safe-area-inset-top))] to clear the device notch
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] transition-colors duration-300">
       <div className="max-w-6xl mx-auto">
         
         {/* Header Section - Text-only header matching the other pages */}
