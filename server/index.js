@@ -993,7 +993,11 @@ cleanOldData();
 setInterval(cleanOldData, 12 * 60 * 60 * 1000);
 
 // 15. SERVER BINDING
-// Finally, we tell the Express app to bind to the port and start listening for traffic.
+// Finally, we bind our Express server to the specified PORT and log a message to the console indicating that the server is running and on which URL it can be accessed.
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+// Start the scraper when the server starts to ensure it runs in the same environment and has access to the same database and 
+// JWT secret for authentication.
+require('./scraper.js'); 
