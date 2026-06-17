@@ -43,6 +43,12 @@ export default function Home() {
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editCommentText, setEditCommentText] = useState("");
 
+  // States for Global FTS5 Search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+
   // Check login status and decode user ID for conditional rendering of input fields and edit/delete buttons
   useEffect(() => {
     const token = localStorage.getItem('glide_token');
@@ -59,6 +65,35 @@ export default function Home() {
       setIsAuthenticated(false);
     }
   }, []);
+
+  // Debounced Search Effect (Prevents database overload by waiting 300ms after typing stops)
+  useEffect(() => {
+    // If the search query is empty or just spaces, we clear results and hide the dropdown immediately.
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    // We set a debounce timer that waits 300ms after the user stops typing before making the search request.
+    const debounceTimer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch(`http://localhost:3000/api/search?q=${encodeURIComponent(searchQuery)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data);
+          setShowSearchDropdown(true);
+        }
+      } catch (error) {
+        console.error("Search failed:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery]);
 
   // 3. THE NETWORK REQUEST 
   // Refactored Fetch Logic to accept a page number
@@ -411,16 +446,88 @@ export default function Home() {
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative transition-colors duration-300 overflow-hidden">
       
       {/* Changed max-w-6xl to max-w-3xl to perfectly center the single-column feed */}
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-3xl mx-auto relative z-10">
         
         {/* Header Section */}
-        <div className="flex items-center justify-between mb-4"> 
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
+        <div className="flex items-center justify-between mb-4 relative z-50"> 
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0">
             Glide
           </h1>
           
+          {/* The Global Search Bar Component */}
+          <div className="flex-1 max-w-sm mx-4 relative hidden sm:block">
+            <div className="relative">
+              <input 
+                type="text" 
+                placeholder="Search news & reels..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => searchQuery.trim() && setShowSearchDropdown(true)}
+                // Timeout allows the user to click a dropdown link before it disappears
+                onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)} 
+                className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-full px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm transition-shadow text-sm"
+              />
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {isSearching && (
+                <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+              )}
+            </div>
+
+            {/* Search Results Dropdown Panel */}
+            {showSearchDropdown && searchResults.length > 0 && (
+              <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl overflow-hidden max-h-96 overflow-y-auto z-50">
+                {/* Re-mapped the dropdown results to route Posts to their local ID, and Reels to the specific reelId */}
+                {searchResults.map((result: any, idx: number) => {
+                  const isPost = result.doc_type === 'POST';
+                  const targetHref = isPost ? `#post-${result.doc_id}` : `/reels?reelId=${result.video_id}`;
+
+                  return (
+                    <a 
+                      key={idx} 
+                      href={targetHref} 
+                      target="_self"
+                      onClick={(e) => {
+                        if (isPost) {
+                          // HIGHLIGHT: Smooth scroll and highlight logic added for Posts in the feed
+                          const element = document.getElementById(`post-${result.doc_id}`);
+                          if (element) {
+                            e.preventDefault(); 
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            element.classList.add('ring-4', 'ring-purple-500', 'transition-all', 'duration-500');
+                            setTimeout(() => element.classList.remove('ring-4', 'ring-purple-500'), 2000);
+                            setShowSearchDropdown(false);
+                          } else {
+                            e.preventDefault();
+                            alert("This post is further down your feed! Keep scrolling to load it.");
+                          }
+                        }
+                      }}
+                      className="flex flex-col p-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${isPost ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
+                          {result.doc_type}
+                        </span>
+                      </div>
+                      <span className="text-sm font-bold text-gray-900 dark:text-white line-clamp-1">{result.title}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">{result.content}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+            
+            {showSearchDropdown && searchResults.length === 0 && searchQuery.trim() && !isSearching && (
+              <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl p-4 text-center text-sm text-gray-500 z-50">
+                No results found.
+              </div>
+            )}
+          </div>
+
           {/* Placed the ThemeToggle next to the AuthButton */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 shrink-0">
             <ThemeToggle />
             {/* Replaced the old manual login button with your new component */}
             <AuthButton />
@@ -474,7 +581,11 @@ export default function Home() {
               {/* We now loop through 'filteredPosts' instead of 'posts' */}
               <div className="space-y-6">
                 {filteredPosts.map((post: any) => (
-                  <div key={post.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden">
+                  <div 
+                    key={post.id} 
+                    id={`post-${post.id}`} // Added explicit HTML ID for the search bar anchor jump
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden"
+                  >
                     
                     {/* Top Row: Category Badge and Timestamp */}
                     <div className="flex justify-between items-center mb-4">
@@ -673,7 +784,6 @@ export default function Home() {
               <p className="text-sm mt-1">Be the first to drop a comment!</p>
             </div>
           ) : (
-            // HIGHLIGHT: Upgraded Comment Mapping with Edit/Delete Controls
             comments.map(comment => {
               // Check if this comment belongs to the logged-in user
               const isOwner = comment.user_id === currentUserId;

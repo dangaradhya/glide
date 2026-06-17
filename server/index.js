@@ -177,6 +177,50 @@ const db = new sqlite3.Database('./glide.sqlite', (err) => {
             if (err) console.error('Error creating comments table:', err.message);
             else console.log('Comments table ready.');
         });
+
+        // Create the FTS5 Virtual Table for Global Search
+        db.run(`
+            CREATE VIRTUAL TABLE IF NOT EXISTS global_search USING fts5(
+                doc_type,       -- 'POST' or 'REEL'
+                doc_id UNINDEXED, -- The original table ID (not searched, just returned)
+                title,          -- The headline or reel title
+                content,        -- The post summary or channel name
+                image_url UNINDEXED,
+                url UNINDEXED
+            )
+        `, (err) => {
+            if (err) console.error('Error creating FTS5 search table:', err.message);
+            else {
+                console.log('FTS5 Global Search table ready.');
+                
+                // Backfill existing posts if they aren't in the search index yet
+                db.run(`INSERT INTO global_search (doc_type, doc_id, title, content, image_url, url)
+                        SELECT 'POST', id, headline, content, image_url, url 
+                        FROM posts 
+                        WHERE id NOT IN (SELECT doc_id FROM global_search WHERE doc_type = 'POST')`);
+                
+                // Backfill existing reels
+                db.run(`INSERT INTO global_search (doc_type, doc_id, title, content)
+                        SELECT 'REEL', id, title, channel_name 
+                        FROM reels 
+                        WHERE id NOT IN (SELECT doc_id FROM global_search WHERE doc_type = 'REEL')`);
+            }
+        });
+
+        // Create Database Triggers to auto-sync new data into the search engine
+        db.run(`
+            CREATE TRIGGER IF NOT EXISTS after_post_insert AFTER INSERT ON posts BEGIN
+                INSERT INTO global_search(doc_type, doc_id, title, content, image_url, url)
+                VALUES ('POST', new.id, new.headline, new.content, new.image_url, new.url);
+            END;
+        `);
+
+        db.run(`
+            CREATE TRIGGER IF NOT EXISTS after_reel_insert AFTER INSERT ON reels BEGIN
+                INSERT INTO global_search(doc_type, doc_id, title, content)
+                VALUES ('REEL', new.id, new.title, new.channel_name);
+            END;
+        `);
     }
 });
 
@@ -232,6 +276,38 @@ app.post('/api/auth/google', async (req, res) => {
 app.get('/api/health', (req, res) => {
     // We send back a standard HTTP 200 OK status with a JSON payload.
     res.status(200).json({ status: 'Online', message: 'Glide API is running' });
+});
+
+// 7. Global Search Endpoint using SQLite FTS5 MATCH
+// This route allows the frontend to perform a global search across both posts and reels using SQLite's full-text search capabilities.
+app.get('/api/search', (req, res) => {
+    const query = req.query.q;
+    // If the search bar is empty, return an empty array
+    if (!query || query.trim() === '') return res.status(200).json([]);
+
+    // We append a wildcard '*' to the user's query for "prefix matching"
+    // e.g., typing "Lebr" will instantly match "Lebron"
+    // We also remove double quotes to prevent SQL syntax errors in the MATCH clause
+    const safeQuery = query.replace(/"/g, '') + '*';
+
+    // Added LEFT JOIN to fetch the specific video_id for Reel routing
+    const sql = `
+        SELECT global_search.*, reels.video_id 
+        FROM global_search 
+        LEFT JOIN reels ON global_search.doc_type = 'REEL' AND global_search.doc_id = reels.id
+        WHERE global_search MATCH ? 
+        ORDER BY rank 
+        LIMIT 8
+    `;
+
+    // We execute the search query against the global_search virtual table. If there's an error, we log it and return a 500 status.
+    db.all(sql, [safeQuery], (err, rows) => {
+        if (err) {
+            console.error("Search error:", err.message);
+            return res.status(500).json({ error: 'Search engine failure' });
+        }
+        res.status(200).json(rows);
+    });
 });
 
 // THE DEDUPLICATION CHECKER ROUTE (The Gatekeeper)
