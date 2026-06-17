@@ -11,8 +11,9 @@ const { OAuth2Client } = require('google-auth-library');
 // This creates our application instance. Think of this like initializing your Axum router in Rust.
 const app = express();
 const PORT = 3000; // The port our server will listen on
-// In production, this lives in a .env file. We hardcode it here for development.
-const JWT_SECRET = 'glide_super_secret_key_2026';
+
+// Pulled strictly from .env for security (no fallback)
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // For Google Sign-In, we need to set up the OAuth2 client with our Google Client ID.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -20,11 +21,24 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // 3. MIDDLEWARE
 // Middleware are functions that intercept incoming HTTP requests before they hit your routes.
-// cors() allows your React frontend (which will run on a different port) to talk to this backend without security blocks.
-app.use(cors()); 
+// Secure CORS policy restricting access to specific frontend domains
+const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://your-glide-app.vercel.app', 'capacitor://localhost'];
+app.use(cors({ origin: allowedOrigins })); 
 // express.json() parses incoming JSON payloads (like when we POST new data). 
 // Without this, the body of an incoming request would just be raw bytes.
 app.use(express.json());
+
+// THE SCRAPER BOUNCER
+// This middleware blocks anyone from posting fake news to your database by requiring a secret API key.
+const verifyScraper = (req, res, next) => {
+    // Check the 'x-scraper-key' header in the incoming request. This is a custom header that your scraper will include with 
+    // every request to prove it's legit.
+    const key = req.headers['x-scraper-key'];
+    if (key !== process.env.SCRAPER_KEY) {
+        return res.status(403).json({ error: 'Forbidden: Invalid Scraper Key' });
+    }
+    next();
+};
 
 // --- THE AUTHENTICATION BOUNCER ---
 // This middleware function checks the headers of incoming requests. 
@@ -312,7 +326,8 @@ app.get('/api/search', (req, res) => {
 
 // THE DEDUPLICATION CHECKER ROUTE (The Gatekeeper)
 // The scraper hits this route first to see if a URL already exists in the database.
-app.post('/api/posts/check', (req, res) => {
+// Added verifyScraper middleware to protect this route
+app.post('/api/posts/check', verifyScraper, (req, res) => {
     const { url } = req.body;
     // We query the database to see if any post already has this URL. If it does, we return { exists: true }.
     // {exists:!!row} is a common JavaScript trick to convert a row object into a boolean (true if it exists, false if null).
@@ -326,7 +341,8 @@ app.post('/api/posts/check', (req, res) => {
 // Big Picture: The post route is where the scraper or AI agent will send new sports news to be saved in the database.
 // When your scraper grabs a new article from the web and Gemini formats it, the scraper needs a way to hand that 
 // data over to the database. It packages the data into a JSON payload and sends it via a POST request.
-app.post('/api/posts', (req, res) => {
+// Added verifyScraper middleware to protect this route
+app.post('/api/posts', verifyScraper, (req, res) => {
     const { sport_category, headline, content, excitement_level, url, image_url } = req.body;
 
     // Basic validation: Check if the request is missing any data.
@@ -655,7 +671,8 @@ app.delete('/api/comments/:id', authenticateToken, (req, res) => {
 // We have a check route to prevent duplicates, a POST route to create new reels, 
 // and a GET route to retrieve them with pagination. The main difference is that 
 // reels are simpler objects (just video_id, title, and channel_name) compared to the rich article posts.
-app.post('/api/reels/check', (req, res) => {
+// Added verifyScraper middleware to protect this route
+app.post('/api/reels/check', verifyScraper, (req, res) => {
     const { video_id } = req.body;
     db.get(`SELECT id FROM reels WHERE video_id = ?`, [video_id], (err, row) => {
         if (err) return res.status(500).json({ error: 'Database error' });
@@ -669,7 +686,8 @@ app.post('/api/reels/check', (req, res) => {
 // We could expand this later to include things like thumbnail URLs, view counts, etc.
 // This is the POST route (save reels to the database) that the scraper will hit when it finds a new sports highlight 
 // reel to save in the database.
-app.post('/api/reels', (req, res) => {
+// Added verifyScraper middleware to protect this route
+app.post('/api/reels', verifyScraper, (req, res) => {
     const { video_id, title, channel_name } = req.body;
     if (!video_id || !title) return res.status(400).json({ error: 'Missing required video fields' });
 

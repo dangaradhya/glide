@@ -153,7 +153,11 @@ async function runIngestionPipeline() {
         try {
             const checkRes = await fetch(CHECK_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    // Added Scraper Key for authentication
+                    'x-scraper-key': process.env.SCRAPER_KEY
+                },
                 body: JSON.stringify({ url: article.link })
             });
             const { exists } = await checkRes.json();
@@ -207,7 +211,10 @@ async function runIngestionPipeline() {
             try {
                 const dbResponse = await fetch(GLIDE_API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-scraper-key': process.env.SCRAPER_KEY
+                    },
                     // We now stringify the new 'payload' object instead of just 'post'
                     body: JSON.stringify(payload) 
                 });
@@ -271,7 +278,10 @@ async function runReelsPipeline() {
                 // DEFENSE: Check if video is already in database, which prevents us from saving duplicates
                 const checkRes = await fetch(REELS_CHECK_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-scraper-key': process.env.SCRAPER_KEY
+                    },
                     body: JSON.stringify({ video_id: videoId })
                 });
                 
@@ -301,7 +311,10 @@ async function runReelsPipeline() {
                 
                 const dbResponse = await fetch(REELS_API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-scraper-key': process.env.SCRAPER_KEY
+                    },
                     body: JSON.stringify(payload)
                 });
                 

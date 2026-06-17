@@ -1,5 +1,4 @@
 // app/live_updates/page.tsx
-"use html";
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -66,8 +65,20 @@ export default function LiveUpdatesPage() {
     fetch('http://localhost:3000/api/users/me/preferences', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
-      .then(res => res.json())
+      .then(async res => {
+        // Added session expiration interceptor for the initial load
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem('glide_token');
+          localStorage.removeItem('glide_user');
+          setIsAuthenticated(false);
+          setPreferencesLoading(false);
+          return null;
+        }
+        return res.json();
+      })
       .then(data => {
+        if (!data) return; // Stop execution if we intercepted an expired token
+        
         if (data.preferences && data.preferences.length > 0) {
           setPreferences(data.preferences);
           setSelectedLeagues(data.preferences); 
@@ -100,6 +111,15 @@ export default function LiveUpdatesPage() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ leagues: selectedLeagues })
       });
+
+      // Intercept expired tokens during the save action
+      if (res.status === 401 || res.status === 403) {
+        alert("Your session expired. Please log in again.");
+        localStorage.removeItem('glide_token');
+        localStorage.removeItem('glide_user');
+        setIsAuthenticated(false);
+        return;
+      }
 
       if (res.ok) {
         setPreferences(selectedLeagues);
