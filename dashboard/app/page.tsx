@@ -49,6 +49,9 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
 
+  // State for the Auto-Paginate & Seek Engine
+  const [autoScrollTarget, setAutoScrollTarget] = useState<number | null>(null);
+
   // Check login status and decode user ID for conditional rendering of input fields and edit/delete buttons
   useEffect(() => {
     const token = localStorage.getItem('glide_token');
@@ -94,6 +97,37 @@ export default function Home() {
 
     return () => clearTimeout(debounceTimer);
   }, [searchQuery]);
+
+  // The Auto-Paginate & Seek Engine
+  // This effect runs every time the 'posts' array updates. If the user searched for a post 
+  // that isn't loaded yet, this engine automatically rapidly fetches subsequent pages until 
+  // the post naturally appears in its correct chronological position in the DOM.
+  useEffect(() => {
+    if (autoScrollTarget === null) return;
+
+    // We try to find the target element in the DOM using its unique ID. If it's found, we scroll to it and flash a highlight.
+    const element = document.getElementById(`post-${autoScrollTarget}`);
+    
+    if (element) {
+      // Target acquired! Scroll down to it, flash the highlight, and disengage the engine.
+      setTimeout(() => {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.classList.add('ring-4', 'ring-purple-500', 'transition-all', 'duration-500');
+        setTimeout(() => element.classList.remove('ring-4', 'ring-purple-500'), 2000);
+      }, 100);
+      setAutoScrollTarget(null);
+    } else if (hasMore && !loadingMore && !loading) {
+      // Target is not in the DOM yet. Force the pagination to fetch the next page immediately.
+      setLoadingMore(true);
+      setPage(prev => prev + 1);
+    } else if (!hasMore) {
+      // Safety catch: We hit the end of the database and the post wasn't found
+      alert("Could not locate this post in the feed.");
+      setAutoScrollTarget(null);
+      setLoadingMore(false);
+    }
+  }, [posts, autoScrollTarget, hasMore, loadingMore, loading]);
+
 
   // 3. THE NETWORK REQUEST 
   // Refactored Fetch Logic to accept a page number
@@ -478,7 +512,6 @@ export default function Home() {
             {/* Search Results Dropdown Panel */}
             {showSearchDropdown && searchResults.length > 0 && (
               <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl overflow-hidden max-h-96 overflow-y-auto z-50">
-                {/* Re-mapped the dropdown results to route Posts to their local ID, and Reels to the specific reelId */}
                 {searchResults.map((result: any, idx: number) => {
                   const isPost = result.doc_type === 'POST';
                   const targetHref = isPost ? `#post-${result.doc_id}` : `/reels?reelId=${result.video_id}`;
@@ -490,17 +523,21 @@ export default function Home() {
                       target="_self"
                       onClick={(e) => {
                         if (isPost) {
-                          // HIGHLIGHT: Smooth scroll and highlight logic added for Posts in the feed
+                          e.preventDefault(); 
+                          setShowSearchDropdown(false);
+                          
+                          // HIGHLIGHT: Reset the category filter to ensure the post isn't hidden by "Basketball" or "F1" filters
+                          setActiveCategory('All');
+                          
                           const element = document.getElementById(`post-${result.doc_id}`);
                           if (element) {
-                            e.preventDefault(); 
+                            // It's already loaded, scroll normally
                             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             element.classList.add('ring-4', 'ring-purple-500', 'transition-all', 'duration-500');
                             setTimeout(() => element.classList.remove('ring-4', 'ring-purple-500'), 2000);
-                            setShowSearchDropdown(false);
                           } else {
-                            e.preventDefault();
-                            alert("This post is further down your feed! Keep scrolling to load it.");
+                            // HIGHLIGHT: The post isn't loaded yet. Engage the Auto-Seek engine!
+                            setAutoScrollTarget(result.doc_id);
                           }
                         }
                       }}
@@ -583,7 +620,7 @@ export default function Home() {
                 {filteredPosts.map((post: any) => (
                   <div 
                     key={post.id} 
-                    id={`post-${post.id}`} // Added explicit HTML ID for the search bar anchor jump
+                    id={`post-${post.id}`} // HIGHLIGHT: Ensure the ID is attached to the card for the scroll engine to find
                     className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden"
                   >
                     
@@ -735,6 +772,15 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* Auto-Seek UI Overlay */}
+      {/* This renders dynamically if the Seek Engine is hunting for a post down the feed */}
+      {autoScrollTarget !== null && (
+        <div className="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full shadow-2xl z-50 flex items-center space-x-3 animate-bounce">
+          <div className="w-4 h-4 border-2 border-white dark:border-gray-900 border-t-transparent rounded-full animate-spin"></div>
+          <span className="font-bold text-sm">Hunting for post in the archives...</span>
+        </div>
+      )}
 
       {/* The Sliding Comment Drawer */}
       {/* Background Overlay */}
