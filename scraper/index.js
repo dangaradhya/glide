@@ -111,10 +111,10 @@ async function extractOgImage(articleUrl) {
         const ogImage = $('meta[property="og:image"]').attr('content');
         
         // Return the image, or a cool fallback image if the article has none
-        return ogImage || 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=1000&auto=format&fit=crop';
+        return ogImage || 'https://placehold.co/1200x630/111827/a855f7?text=GLIDE&font=Montserrat';
     } catch (error) {
         console.error(`Failed to fetch image for ${articleUrl}:`, error.message);
-        return 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=1000&auto=format&fit=crop';
+        return 'https://placehold.co/1200x630/111827/a855f7?text=GLIDE&font=Montserrat';
     }
 }
 

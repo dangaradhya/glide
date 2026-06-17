@@ -942,6 +942,38 @@ app.post('/api/users/me/preferences', authenticateToken, (req, res) => {
     });
 });
 
+// Data Retention Cleanup Routine (7-Day Limit)
+// This function runs every 12 hours to delete posts and reels older than 7 days, keeping the database light and fast.
+const cleanOldData = () => {
+    console.log("🧹 Running 7-day data retention sweep...");
+    db.serialize(() => {
+        // First, remove old entries from the FTS5 global_search index
+        db.run(`DELETE FROM global_search WHERE doc_type = 'POST' AND doc_id IN (SELECT id FROM posts WHERE timestamp <= datetime('now', '-7 days'))`);
+        db.run(`DELETE FROM global_search WHERE doc_type = 'REEL' AND doc_id IN (SELECT id FROM reels WHERE timestamp <= datetime('now', '-7 days'))`);
+        
+        // Remove orphaned junction data (likes, saves, comments)
+        db.run(`DELETE FROM post_likes WHERE post_id IN (SELECT id FROM posts WHERE timestamp <= datetime('now', '-7 days'))`);
+        db.run(`DELETE FROM saved_posts WHERE post_id IN (SELECT id FROM posts WHERE timestamp <= datetime('now', '-7 days'))`);
+        db.run(`DELETE FROM comments WHERE post_id IN (SELECT id FROM posts WHERE timestamp <= datetime('now', '-7 days'))`);
+        
+        db.run(`DELETE FROM reel_likes WHERE reel_id IN (SELECT id FROM reels WHERE timestamp <= datetime('now', '-7 days'))`);
+        db.run(`DELETE FROM saved_reels WHERE reel_id IN (SELECT id FROM reels WHERE timestamp <= datetime('now', '-7 days'))`);
+        
+        // Finally, delete the actual posts and reels
+        db.run(`DELETE FROM posts WHERE timestamp <= datetime('now', '-7 days')`, function(err) {
+            if (!err && this.changes > 0) console.log(`   -> Deleted ${this.changes} old posts.`);
+        });
+        db.run(`DELETE FROM reels WHERE timestamp <= datetime('now', '-7 days')`, function(err) {
+            if (!err && this.changes > 0) console.log(`   -> Deleted ${this.changes} old reels.`);
+        });
+    });
+    console.log("🧹 Data retention sweep completed.");
+};
+
+// Run the cleanup immediately on boot, then every 12 hours
+cleanOldData();
+setInterval(cleanOldData, 12 * 60 * 60 * 1000);
+
 // 15. SERVER BINDING
 // Finally, we tell the Express app to bind to the port and start listening for traffic.
 app.listen(PORT, () => {
