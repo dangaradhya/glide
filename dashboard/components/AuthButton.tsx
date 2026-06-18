@@ -13,20 +13,19 @@ export default function AuthButton() {
   const [user, setUser] = useState<{ name: string; picture: string } | null>(null);
   const { resolvedTheme } = useTheme();
   
-  // Added the mounted state to prevent mobile Next.js crashes!
+  // Added state to track if component is mounted and if we're on a native platform
   const [mounted, setMounted] = useState(false);
-  
-  // State to track if we are on a native phone or a web browser
+
+  // State to track if we're running in a native environment (Capacitor) or web
   const [isNative, setIsNative] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    
-    // Check if we are running inside the compiled Android/iOS app
+    // Determine if we're running in a native environment and initialize GoogleAuth if so
     const nativePlatform = Capacitor.isNativePlatform();
     setIsNative(nativePlatform);
 
-    // ONLY initialize the Capacitor plugin if we are actually on a phone
+    // Only initialize GoogleAuth if we're on a native platform to avoid unnecessary errors in web environments
     if (nativePlatform) {
       try {
         GoogleAuth.initialize({
@@ -35,7 +34,7 @@ export default function AuthButton() {
           grantOfflineAccess: true,
         });
       } catch (e) {
-        console.error("Capacitor auth init failed", e);
+        alert("Capacitor Init Error: " + JSON.stringify(e));
       }
     }
 
@@ -47,7 +46,8 @@ export default function AuthButton() {
 
   // Shared function to send the token to your Render backend
   const authenticateWithServer = async (token: string) => {
-    // We added a try-catch here to handle network errors gracefully, and an alert if the server rejects the token!
+
+    // Added try-catch to handle network errors or if Render is offline, which would previously cause silent failures
     try {
       const res = await fetch('https://glide-sports.onrender.com/api/auth/google', {
         method: 'POST',
@@ -63,30 +63,38 @@ export default function AuthButton() {
         setUser(data.user);
         window.location.reload();
       } else {
-        // If the backend rejects it, we now show an alert so it doesn't fail silently!
-        alert("Login blocked by server: " + (data.error || "Invalid token"));
+        // Will now alert exactly what your backend is complaining about
+        alert("Backend Rejected Login: " + (data.error || "Unknown error"));
       }
-    } catch (error) {
-      console.error("Network error during login:", error);
+    } catch (error: any) {
+      // Will catch CORS issues or if Render is completely offline
+      alert("Network Fetch Failed: " + error.message);
     }
   };
 
-  // Specific handler for the Laptop / Web Browser
   const handleWebLoginSuccess = async (credentialResponse: any) => {
+    if (!credentialResponse.credential) {
+      alert("Google didn't return a web token!");
+      return;
+    }
     await authenticateWithServer(credentialResponse.credential);
   };
 
-  // Specific handler for the Android / iOS App
   const handleNativeLogin = async () => {
     try {
       const googleUser = await GoogleAuth.signIn();
+      if (!googleUser.authentication.idToken) {
+        alert("Google didn't return a native token!");
+        return;
+      }
       await authenticateWithServer(googleUser.authentication.idToken);
-    } catch (error) {
-      console.error("Native login failed:", error);
+    } catch (error: any) {
+      // Will alert if the Android Google pop-up crashes
+      alert("Native Login Error: " + JSON.stringify(error));
     }
   };
 
-  // Logout function that works for both platforms
+  // Added logout handling for both platforms, and also clear localStorage and reload the page to reset the app state
   const handleLogout = async () => {
     if (isNative) {
       try { await GoogleAuth.signOut(); } catch (e) {}
@@ -100,11 +108,12 @@ export default function AuthButton() {
     window.location.reload();
   };
 
-  // Prevent UI shifting before Next.js knows if it's mobile or web
+  // Added a loading state to prevent flashing the login button before we know if the user is logged in or not, which can be jarring especially on slow connections
   if (!mounted) {
     return <div className="w-[180px] h-[36px] opacity-0"></div>;
   }
   
+  // If the user is logged in, show their profile picture and name with a logout button. Otherwise, show the appropriate login button based on the platform.
   if (user) {
     return (
       <div className="flex items-center space-x-3 bg-white dark:bg-white/10 rounded-full pr-4 p-1 backdrop-blur-md border border-gray-200 dark:border-white/20 shadow-sm dark:shadow-lg">
@@ -125,9 +134,8 @@ export default function AuthButton() {
     );
   }
 
-  // Dynamically render the correct button based on the device!
+  // If we're on a native platform, show the native login button. Otherwise, show the web login button. Both buttons are styled to match the overall design of the app and provide visual feedback on hover.
   if (isNative) {
-    // 📱 Render the Native Button for the APK
     return (
       <div className="shadow-lg rounded-full overflow-hidden border border-gray-200 dark:border-gray-700">
           <button onClick={handleNativeLogin} className={`flex items-center px-4 py-2 text-sm font-medium transition-colors ${resolvedTheme === 'dark' ? 'bg-black text-white hover:bg-gray-900' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
@@ -142,12 +150,11 @@ export default function AuthButton() {
       </div>
     );
   } else {
-    // 💻 Render the Web-Safe React-OAuth Button for Vercel/Laptop
     return (
       <div className="shadow-lg rounded-full overflow-hidden border border-gray-200 dark:border-gray-700">
           <GoogleLogin
               onSuccess={handleWebLoginSuccess}
-              onError={() => console.error('Google Login Failed')}
+              onError={() => alert('Google Web Form Error: Login Failed')}
               theme={resolvedTheme === 'dark' ? 'filled_black' : 'outline'}
               shape="pill"
               text="continue_with"
