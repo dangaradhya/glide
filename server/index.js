@@ -36,7 +36,8 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const allowedOrigins = [
     'https://glide-green.vercel.app', // Your live web app
     'capacitor://localhost',          // iOS native app
-    'http://localhost'                // Android native app
+    'https://localhost',              // Android native app (Secure default)
+    'http://localhost'                // Android native app (Legacy backup)
 ];
 app.use(cors({ origin: allowedOrigins })); 
 // express.json() parses incoming JSON payloads (like when we POST new data). 
