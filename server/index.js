@@ -33,7 +33,11 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // 3. MIDDLEWARE
 // Middleware are functions that intercept incoming HTTP requests before they hit your routes.
 // Secure CORS policy restricting access to specific frontend domains
-const allowedOrigins = ['https://glide-sports.onrender.com', 'http://localhost:3001', 'https://your-glide-app.vercel.app', 'capacitor://localhost'];
+const allowedOrigins = [
+    'https://glide-green.vercel.app', // Your live web app
+    'capacitor://localhost',          // iOS native app
+    'http://localhost'                // Android native app
+];
 app.use(cors({ origin: allowedOrigins })); 
 // express.json() parses incoming JSON payloads (like when we POST new data). 
 // Without this, the body of an incoming request would just be raw bytes.
