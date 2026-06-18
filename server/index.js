@@ -1,3 +1,14 @@
+// INITIALIZE SENTRY FIRST (Always at the top of your main file, before any other imports or code)
+const Sentry = require("@sentry/node");
+const { nodeProfilingIntegration } = require("@sentry/profiling-node");
+
+Sentry.init({
+  dsn: "https://681d851d0b2e9913f9352955f6e54b25@o4511583806554112.ingest.us.sentry.io/4511583831261184",
+  integrations: [nodeProfilingIntegration()],
+  tracesSampleRate: 1.0, 
+  profilesSampleRate: 1.0,
+});
+
 // 1. IMPORTS (The equivalent of #include in C++ or 'use' in Rust)
 // 'require' is how Node.js pulls in external libraries from your node_modules folder.
 require('dotenv').config(); // Loads your GOOGLE_CLIENT_ID from the .env file
@@ -63,7 +74,7 @@ const authenticateToken = (req, res, next) => {
 // 4. DATABASE CONNECTION
 // We are creating a connection pool to a local SQLite file. 
 // If 'glide.sqlite' doesn't exist, SQLite will create it automatically.
-const db = new sqlite3.Database('./glide.sqlite', (err) => {
+const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
     if (err) {
         console.error('Error opening database:', err.message);
     } else {
@@ -988,9 +999,26 @@ const cleanOldData = () => {
     console.log("🧹 Data retention sweep completed.");
 };
 
+// Hidden Admin Route to track scaling limits
+// Visit https://your-render-url.onrender.com/api/admin/stats to view
+app.get('/api/admin/stats', (req, res) => {
+    db.get('SELECT count(*) as total_users FROM users', (err, users) => {
+        db.get('SELECT count(*) as total_posts FROM posts', (err, posts) => {
+            res.json({ 
+                status: 'Healthy',
+                users: users ? users.total_users : 0, 
+                posts: posts ? posts.total_posts : 0 
+            });
+        });
+    });
+});
+
 // Run the cleanup immediately on boot, then every 12 hours
 cleanOldData();
 setInterval(cleanOldData, 12 * 60 * 60 * 1000);
+
+// Error Handling Middleware
+Sentry.setupExpressErrorHandler(app);
 
 // 15. SERVER BINDING
 // Finally, we bind our Express server to the specified PORT and log a message to the console indicating that the server is running and on which URL it can be accessed.
