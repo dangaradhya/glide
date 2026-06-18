@@ -7,7 +7,7 @@
 "use client";
 
 // 1. IMPORTS
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
 // Import the Google Auth component
 import AuthButton from '@/components/AuthButton';
@@ -15,7 +15,7 @@ import AuthButton from '@/components/AuthButton';
 import ThemeToggle from '@/components/ThemeToggle';
 import { useSearchParams } from 'next/navigation'; 
 
-export default function Reels() {
+function ReelsContent() {
   // 2. STATE MANAGEMENT
   // We maintain state for the list of reels, loading status, 
   // whether there are more reels to load, and whether we are currently loading more reels.
@@ -558,5 +558,21 @@ export default function Reels() {
         </div>
       )}
     </main>
+  );
+}
+
+// The new default export that wraps your Reels content in a Suspense boundary
+// This prevents Next.js static build errors when using useSearchParams()
+export default function Reels() {
+  return (
+    <Suspense 
+      fallback={
+        <div className="h-screen w-full bg-gray-100 dark:bg-black flex items-center justify-center">
+          <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      }
+    >
+      <ReelsContent />
+    </Suspense>
   );
 }
