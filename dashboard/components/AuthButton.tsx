@@ -28,7 +28,7 @@ export default function AuthButton() {
   const handleSuccess = async (credentialResponse: any) => {
     try {
       // Send the Google token to our Express backend
-      const res = await fetch('http://localhost:3000/api/auth/google', {
+      const res = await fetch('https://glide-sports.onrender.com/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: credentialResponse.credential }),

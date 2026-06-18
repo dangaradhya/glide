@@ -82,7 +82,7 @@ export default function Home() {
     const debounceTimer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`http://localhost:3000/api/search?q=${encodeURIComponent(searchQuery)}`);
+        const res = await fetch(`https://glide-sports.onrender.com/api/search?q=${encodeURIComponent(searchQuery)}`);
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data);
@@ -142,7 +142,7 @@ export default function Home() {
       const token = localStorage.getItem('glide_token');
       const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-      const res = await fetch(`http://localhost:3000/api/posts?page=${pageNum}&limit=5`, { 
+      const res = await fetch(`https://glide-sports.onrender.com/api/posts?page=${pageNum}&limit=5`, { 
         headers 
       });
       const data = await res.json();
@@ -223,7 +223,7 @@ export default function Home() {
 
     // POST request to the backend to update the like in the database
     try {
-      const res = await fetch(`http://localhost:3000/api/posts/${id}/like`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${id}/like`, {
         method: 'POST', 
         headers: {
           'Content-Type': 'application/json',
@@ -296,7 +296,7 @@ export default function Home() {
 
     // POST request to the backend to update the save status in the database
     try {
-      const res = await fetch(`http://localhost:3000/api/posts/${id}/save`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${id}/save`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -359,7 +359,7 @@ export default function Home() {
 
     // We make a GET request to fetch comments for the specific post ID. The backend should return an array of comments related to that post.
     try {
-      const res = await fetch(`http://localhost:3000/api/posts/${post.id}/comments`);
+      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${post.id}/comments`);
       if (res.ok) {
         const data = await res.json();
         setComments(data);
@@ -382,7 +382,7 @@ export default function Home() {
 
     // We make a POST request to submit the new comment to the backend. The body of the request includes the comment text, and we attach the token for authentication.
     try {
-      const res = await fetch(`http://localhost:3000/api/posts/${activePost.id}/comments`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${activePost.id}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -416,7 +416,7 @@ export default function Home() {
     
     // PUT request to update the comment text in the database. We also optimistically update the UI to reflect the new comment text immediately.
     try {
-      const res = await fetch(`http://localhost:3000/api/comments/${commentId}`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/comments/${commentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ text: editCommentText })
@@ -442,7 +442,7 @@ export default function Home() {
     // DELETE request to remove the comment from the database. We also optimistically remove the comment from the UI and 
     // decrement the comment counter on the main feed.
     try {
-      const res = await fetch(`http://localhost:3000/api/comments/${commentId}`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/comments/${commentId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

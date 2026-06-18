@@ -34,13 +34,13 @@ const REELS_SOURCES = [
 ];
 
 // This is the URL of the Express API endpoint where we will POST the formatted articles to be saved in the database
-const GLIDE_API_URL = 'http://localhost:3000/api/posts'; 
+const GLIDE_API_URL = 'https://glide-sports.onrender.com/api/posts'; 
 // The URL of our new Deduplication Gate route on the Express Server
-const CHECK_URL = 'http://localhost:3000/api/posts/check';
+const CHECK_URL = 'https://glide-sports.onrender.com/api/posts/check';
 
 // URLs for the Reels pipeline
-const REELS_API_URL = 'http://localhost:3000/api/reels';
-const REELS_CHECK_URL = 'http://localhost:3000/api/reels/check';
+const REELS_API_URL = 'https://glide-sports.onrender.com/api/reels';
+const REELS_CHECK_URL = 'https://glide-sports.onrender.com/api/reels/check';
 
 // 2. The "Is it a Short?" Network Trick
 // This pings YouTube's servers. If YouTube redirects the /shorts/ URL to a standard /watch/ URL, it's a long-form video.

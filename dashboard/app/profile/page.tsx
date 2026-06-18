@@ -44,7 +44,7 @@ export default function ProfileVault() {
       setUserProfile(JSON.parse(userStr));
 
       try {
-        const res = await fetch('http://localhost:3000/api/users/me/vault', {
+        const res = await fetch('https://glide-sports.onrender.com/api/users/me/vault', {
           headers: {
             'Authorization': `Bearer ${token}`
           }

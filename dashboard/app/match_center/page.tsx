@@ -62,7 +62,7 @@ export default function LiveUpdatesPage() {
     setIsAuthenticated(true);
 
     // Fetch user preferences to determine which leagues they have selected
-    fetch('http://localhost:3000/api/users/me/preferences', {
+    fetch('https://glide-sports.onrender.com/api/users/me/preferences', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(async res => {
@@ -106,7 +106,7 @@ export default function LiveUpdatesPage() {
 
     // Save the selected leagues to the backend and update the local state
     try {
-      const res = await fetch('http://localhost:3000/api/users/me/preferences', {
+      const res = await fetch('https://glide-sports.onrender.com/api/users/me/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ leagues: selectedLeagues })

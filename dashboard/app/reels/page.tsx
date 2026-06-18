@@ -54,7 +54,7 @@ export default function Reels() {
 
       // Forward targetReelId directly into your server endpoint layout parameters
       const urlParam = targetReelId && reels.length === 0 ? `&reelId=${targetReelId}` : '';
-      const res = await fetch(`http://localhost:3000/api/reels?limit=3&exclude=${currentIds}${urlParam}`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=3&exclude=${currentIds}${urlParam}`, {
         headers
       });
       const data = await res.json();
@@ -241,7 +241,7 @@ export default function Reels() {
 
     // BACKEND UPDATE: We then send a request to the backend to update the like status in the database.
     try {
-      const res = await fetch(`http://localhost:3000/api/reels/${id}/like`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${id}/like`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
       });
@@ -309,7 +309,7 @@ export default function Reels() {
 
     // BACKEND UPDATE: We then send a POST request to the backend to update the save status in the database.
     try {
-      const res = await fetch(`http://localhost:3000/api/reels/${id}/save`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${id}/save`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -345,7 +345,7 @@ export default function Reels() {
     
     // 1. Tell the backend to increment the share counter (Background process)
     try {
-        await fetch(`http://localhost:3000/api/reels/${id}/share`, { method: 'POST' });
+        await fetch(`https://glide-sports.onrender.com/api/reels/${id}/share`, { method: 'POST' });
         // Optimistically update the UI share counter
         setReels(currentReels => currentReels.map(reel =>
           reel.id === id ? { ...reel, shares: (reel.shares || 0) + 1 } : reel
