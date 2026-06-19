@@ -387,10 +387,10 @@ function ReelsContent() {
       {/* Adapted the gradient overlay and used flex-col to stack rows properly without overlap */}
       <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-gray-100/90 dark:from-black/80 via-gray-100/40 dark:via-black/40 to-transparent pointer-events-none transition-all">
         
-        {/* Wrapped the inner header rows in a container that caps at max-w-md on desktop. 
-            This forces the Logo and Auth buttons to squeeze inward and sit perfectly above the reel player, 
-            preventing them from looking awkward and detached on large screens. Mobile remains completely unaffected. */}
-        <div className="w-full md:max-w-md mx-auto flex flex-col">
+        {/* Added md:-translate-y-2 (shifts the header up) and md:px-2 (pulls elements slightly inward). 
+            This prevents the Logo and Auth buttons from awkwardly intersecting the rounded corners of the reel on desktop. 
+            Mobile remains completely unaffected. */}
+        <div className="w-full md:max-w-md mx-auto flex flex-col md:-translate-y-2 md:px-2">
           {/* Row 1: Logo and Auth - Spreads out on desktop, tight on mobile */}
           <div className="flex justify-between items-center w-full pointer-events-auto mt-2">
             {/* Added the Glide Logo to balance the flex layout and match the home page */}
