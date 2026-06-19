@@ -384,35 +384,35 @@ function ReelsContent() {
     <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-screen overflow-hidden flex flex-col transition-colors duration-300">
       
       {/* Responsive Header Container for Reels */}
-      <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-gray-100/90 dark:from-black/80 via-gray-100/40 dark:via-black/40 to-transparent pointer-events-none transition-all">
+      <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-black/60 to-transparent pointer-events-none transition-all">
         
         <div className="w-full md:max-w-md mx-auto flex flex-col">
-          {/* Row 1: Logo and Auth */}
+          {/* Row 1: Logo and Auth - Spreads out on desktop, tight on mobile */}
           {/* Added md:-translate-y-4 to explicitly shift the logo and Auth buttons UP by 16px on desktop, fully clearing the reel */}
           <div className="flex justify-between items-center w-full pointer-events-auto mt-2 md:-translate-y-4">
+            {/* Added the Glide Logo to balance the flex layout and match the home page */}
             <Link href="/" className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0 drop-shadow-md">
               Glide
             </Link>
 
             {/* Right side: Theme & Auth */}
+            {/* gap-2 md:gap-4 keeps them properly distanced without being detached to the absolute edges */}
             <div className="flex items-center gap-2 md:gap-4 shrink-0">
                <ThemeToggle />
                <AuthButton />
             </div>
           </div>
 
-          {/* Row 2: Navigation Links */}
-          {/* HIGHLIGHT: Added a frosted glass pill effect (bg-white/80 backdrop-blur-md) that ONLY triggers in light mode,
-              ensuring perfect readability over any video. Dark mode stays beautifully transparent (dark:bg-transparent dark:backdrop-blur-none).
-              Added w-fit and mx-auto so the pill cleanly hugs the text. */}
-          <div className="hidden md:flex justify-center items-center gap-6 md:gap-8 mt-2 md:mt-3 w-fit mx-auto pointer-events-auto px-6 py-2.5 bg-white/80 dark:bg-transparent backdrop-blur-md dark:backdrop-blur-none rounded-full shadow-sm dark:shadow-none border border-white/50 dark:border-transparent transition-all">
-            <Link href="/" className="text-gray-600 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors drop-shadow-sm dark:drop-shadow-md">
+          {/* Row 2: Navigation Links (Moved to its own row to prevent mobile collisions) */}
+          {/* Hidden on mobile (hidden md:flex), visible securely on desktop */}
+          <div className="hidden md:flex justify-center gap-6 md:gap-8 mt-2 md:mt-3 w-fit mx-auto pointer-events-auto px-6 py-2.5 transition-all">
+            <Link href="/" className="text-white font-bold text-lg hover:text-gray-200 transition-colors drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
               Posts
             </Link>
-            <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-gray-900 dark:border-white pb-0.5 drop-shadow-sm dark:drop-shadow-md cursor-default">
+            <span className="text-white font-bold text-lg border-b-2 border-white pb-0.5 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] cursor-default">
               Reels
             </span>
-            <Link href="/match_center" className="text-gray-600 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors drop-shadow-sm dark:drop-shadow-md">
+            <Link href="/match_center" className="text-white font-bold text-lg hover:text-gray-200 transition-colors drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
               Match Center
             </Link>
           </div>
