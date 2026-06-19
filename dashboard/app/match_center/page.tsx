@@ -138,7 +138,9 @@ export default function LiveUpdatesPage() {
   return (
     // Injected pt-[max(1rem,env(safe-area-inset-top))] to clear the device notch
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative transition-colors duration-300">
-      <div className="max-w-4xl mx-auto">
+      
+      {/* HIGHLIGHT: Added pb-24 md:pb-8 so the grid clears the mobile bottom navigation bar */}
+      <div className="max-w-4xl mx-auto pb-24 md:pb-8">
         
         {/* Header Section */}
         <div className="flex items-center justify-between mb-4">
@@ -153,7 +155,8 @@ export default function LiveUpdatesPage() {
         </div>
 
         {/* Navigation Section */}
-        <div className="flex justify-center space-x-8 mb-8">
+        {/* HIGHLIGHT: Hidden on mobile (hidden md:flex), safely centered on desktop */}
+        <div className="hidden md:flex justify-center space-x-8 mb-8">
           <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
             Posts
           </Link>
@@ -299,6 +302,20 @@ export default function LiveUpdatesPage() {
         </div>
         )}
       </div>
+
+      {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-16 z-[60] pb-[env(safe-area-inset-bottom)] px-4">
+        <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
+          Posts
+        </Link>
+        <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
+          Reels
+        </Link>
+        <span className="text-gray-900 dark:text-white font-bold text-sm flex flex-col items-center pt-1 border-t-2 border-purple-500">
+          Match Center
+        </span>
+      </div>
+
     </main>
   );
 }

@@ -383,34 +383,34 @@ function ReelsContent() {
     // bg-gray-100/bg-black switch for the main container
     <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-screen overflow-hidden flex flex-col transition-colors duration-300">
       
-      {/* Top Navigation Bar with AuthButton integration */}
-      {/* Adapted the gradient overlay for both light and dark themes */}
-      {/* Added pt-[max(1.5rem,env(safe-area-inset-top))] to push header icons below the notch */}
-      <div className="absolute top-0 w-full z-50 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-gray-100/90 dark:from-black/80 via-gray-100/40 dark:via-black/40 to-transparent pointer-events-none">
+      {/* Responsive Header Container for Reels */}
+      {/* Adapted the gradient overlay and used flex-col to stack rows properly without overlap */}
+      <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-gray-100/90 dark:from-black/80 via-gray-100/40 dark:via-black/40 to-transparent pointer-events-none transition-all">
         
-        {/* Row 1: Logo & Authentication */}
-        <div className="flex justify-between items-center w-full mb-4 pointer-events-auto mt-2">
+        {/* Row 1: Logo and Auth - Spreads out on desktop, tight on mobile */}
+        <div className="flex justify-between items-center w-full pointer-events-auto mt-2">
           {/* Added the Glide Logo to balance the flex layout and match the home page */}
           <Link href="/" className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0 drop-shadow-md">
             Glide
           </Link>
 
           {/* Right side: Theme & Auth */}
-          <div className="flex items-center space-x-3 shrink-0">
+          {/* gap-2 md:gap-4 keeps them properly distanced without being detached to the absolute edges */}
+          <div className="flex items-center gap-2 md:gap-4 shrink-0">
              <ThemeToggle />
              <AuthButton />
           </div>
         </div>
 
         {/* Row 2: Navigation Links (Moved to its own row to prevent mobile collisions) */}
-        <div className="flex justify-center items-center space-x-6 md:space-x-8 w-full pointer-events-auto pb-8">
+        {/* HIGHLIGHT: Hidden on mobile (hidden md:flex), visible securely on desktop */}
+        <div className="hidden md:flex justify-center gap-6 md:gap-8 mt-4 md:mt-6 w-full pointer-events-auto pb-6">
           <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors drop-shadow-md">
             Posts
           </Link>
           <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-gray-900 dark:border-white pb-1 drop-shadow-md cursor-default">
             Reels
           </span>
-          {/* Added the new routing link for the dedicated Match Center page */}
           <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors drop-shadow-md">
             Match Center
           </Link>
@@ -428,7 +428,8 @@ function ReelsContent() {
         </div>
       ) : (
         /* The Scroll Snapping Container */
-        <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide pb-20">
+        // HIGHLIGHT: Removing pb-20 on mobile so the video stays entirely full screen edge-to-edge
+        <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
           {reels.map((reel) => (
             // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
             <div 
@@ -438,8 +439,8 @@ function ReelsContent() {
               className="reel-container h-screen w-full flex flex-col items-center justify-center snap-center relative"
             >
               {/* The Video Container */}
-              {/* The video container always stays black so videos blend well, but the border adapts */}
-              <div className="w-full max-w-md h-[75vh] bg-black rounded-xl overflow-hidden shadow-2xl relative border border-gray-300 dark:border-gray-800">
+              {/* HIGHLIGHT: Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl) */}
+              <div className="w-full h-full md:max-w-md md:h-[85vh] bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800">
                 
                 {/* The Scale Trick Wrapper */}
                 <div className="absolute top-1/2 left-1/2 w-[125%] h-[125%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
@@ -472,7 +473,8 @@ function ReelsContent() {
                 </div>
 
                 {/* Right-Side Action Bar (Like & Share) */}
-                <div className="absolute right-4 bottom-24 flex flex-col items-center space-y-6 z-40 pointer-events-auto">
+                {/* HIGHLIGHT: Moved buttons slightly higher (bottom-28) on mobile to clear the new bottom navigation bar */}
+                <div className="absolute right-4 bottom-28 md:bottom-24 flex flex-col items-center space-y-6 z-40 pointer-events-auto">
                   
                   {/* Like Button */}
                   <button 
@@ -536,8 +538,8 @@ function ReelsContent() {
                 </div>
 
                 {/* Video Metadata Overlay */}
-                {/* Adjusted padding on the right (pr-20) so text doesn't overlap the buttons */}
-                <div className="absolute bottom-0 left-0 w-full p-6 pr-20 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-30">
+                {/* HIGHLIGHT: Pushed the metadata text up slightly on mobile (pb-20) so it doesn't get hidden behind the bottom navigation */}
+                <div className="absolute bottom-0 left-0 w-full p-6 pb-20 md:pb-6 pr-20 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-30">
                   <h3 className="text-lg font-bold text-white leading-snug drop-shadow-lg">{reel.title}</h3>
                   <p className="text-sm text-gray-300 mt-2 font-medium bg-white/10 backdrop-blur-sm inline-block px-3 py-1 rounded-full shadow-sm">@{reel.channel_name}</p>
                 </div>
@@ -560,6 +562,21 @@ function ReelsContent() {
           )}
         </div>
       )}
+
+      {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
+      {/* On reels, this bar overlays the video slightly with a sleek gradient, matching the TikTok/Instagram aesthetic */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-gradient-to-t from-black/95 via-black/70 to-transparent flex justify-around items-center h-[72px] z-[60] pb-[env(safe-area-inset-bottom)] px-4">
+        <Link href="/" className="text-gray-300 font-bold text-sm hover:text-white transition-colors pt-2">
+          Posts
+        </Link>
+        <span className="text-white font-bold text-sm flex flex-col items-center pt-2 border-t-2 border-white">
+          Reels
+        </span>
+        <Link href="/match_center" className="text-gray-300 font-bold text-sm hover:text-white transition-colors pt-2">
+          Match Center
+        </Link>
+      </div>
+
     </main>
   );
 }

@@ -128,7 +128,6 @@ export default function Home() {
     }
   }, [posts, autoScrollTarget, hasMore, loadingMore, loading]);
 
-
   // 3. THE NETWORK REQUEST 
   // Refactored Fetch Logic to accept a page number
   const fetchPosts = async (pageNum: number) => {
@@ -481,109 +480,114 @@ export default function Home() {
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative transition-colors duration-300 overflow-hidden">
       
       {/* Changed max-w-6xl to max-w-3xl to perfectly center the single-column feed */}
-      <div className="max-w-3xl mx-auto relative z-10">
+      {/* HIGHLIGHT: Added pb-20 md:pb-0 so the feed isn't hidden behind the new mobile bottom nav */}
+      <div className="max-w-3xl mx-auto relative z-10 pb-20 md:pb-0">
         
-        {/* Header Section */}
-        <div className="flex items-center justify-between mb-4 relative z-50"> 
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0">
-            Glide
-          </h1>
+        {/* Responsive Header Container */}
+        {/* We use flex-col on the main wrapper, splitting the header into 2 distinct rows so nothing crashes on mobile */}
+        <div className="w-full z-50 mb-8 flex flex-col transition-all relative"> 
           
-          {/* The Global Search Bar Component */}
-          <div className="flex-1 max-w-sm mx-4 relative hidden sm:block">
-            <div className="relative">
-              <input 
-                type="text" 
-                placeholder="Search news & reels..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => searchQuery.trim() && setShowSearchDropdown(true)}
-                // Timeout allows the user to click a dropdown link before it disappears
-                onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)} 
-                className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-full px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm transition-shadow text-sm"
-              />
-              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              {isSearching && (
-                <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+          {/* Row 1: Logo, Search, and Auth - Spreads out on desktop, tight on mobile */}
+          <div className="flex justify-between items-center w-full mb-4 md:mb-6">
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0">
+              Glide
+            </h1>
+            
+            {/* The Global Search Bar Component */}
+            <div className="flex-1 max-w-sm mx-4 relative hidden sm:block">
+              <div className="relative">
+                <input 
+                  type="text" 
+                  placeholder="Search news & reels..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => searchQuery.trim() && setShowSearchDropdown(true)}
+                  // Timeout allows the user to click a dropdown link before it disappears
+                  onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)} 
+                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-full px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm transition-shadow text-sm"
+                />
+                <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                {isSearching && (
+                  <div className="absolute right-3 top-2.5 w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                )}
+              </div>
+
+              {/* Search Results Dropdown Panel */}
+              {showSearchDropdown && searchResults.length > 0 && (
+                <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl overflow-hidden max-h-96 overflow-y-auto z-50">
+                  {searchResults.map((result: any, idx: number) => {
+                    const isPost = result.doc_type === 'POST';
+                    const targetHref = isPost ? `#post-${result.doc_id}` : `/reels?reelId=${result.video_id}`;
+
+                    return (
+                      <a 
+                        key={idx} 
+                        href={targetHref} 
+                        target="_self"
+                        onClick={(e) => {
+                          if (isPost) {
+                            e.preventDefault(); 
+                            setShowSearchDropdown(false);
+                            
+                            // Reset the category filter to ensure the post isn't hidden by "Basketball" or "F1" filters
+                            setActiveCategory('All');
+                            
+                            const element = document.getElementById(`post-${result.doc_id}`);
+                            if (element) {
+                              // It's already loaded, scroll normally
+                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              element.classList.add('ring-4', 'ring-purple-500', 'transition-all', 'duration-500');
+                              setTimeout(() => element.classList.remove('ring-4', 'ring-purple-500'), 2000);
+                            } else {
+                              // The post isn't loaded yet. Engage the Auto-Seek engine!
+                              setAutoScrollTarget(result.doc_id);
+                            }
+                          }
+                        }}
+                        className="flex flex-col p-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${isPost ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
+                            {result.doc_type}
+                          </span>
+                        </div>
+                        <span className="text-sm font-bold text-gray-900 dark:text-white line-clamp-1">{result.title}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">{result.content}</span>
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+              
+              {showSearchDropdown && searchResults.length === 0 && searchQuery.trim() && !isSearching && (
+                <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl p-4 text-center text-sm text-gray-500 z-50">
+                  No results found.
+                </div>
               )}
             </div>
 
-            {/* Search Results Dropdown Panel */}
-            {showSearchDropdown && searchResults.length > 0 && (
-              <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl overflow-hidden max-h-96 overflow-y-auto z-50">
-                {searchResults.map((result: any, idx: number) => {
-                  const isPost = result.doc_type === 'POST';
-                  const targetHref = isPost ? `#post-${result.doc_id}` : `/reels?reelId=${result.video_id}`;
-
-                  return (
-                    <a 
-                      key={idx} 
-                      href={targetHref} 
-                      target="_self"
-                      onClick={(e) => {
-                        if (isPost) {
-                          e.preventDefault(); 
-                          setShowSearchDropdown(false);
-                          
-                          // HIGHLIGHT: Reset the category filter to ensure the post isn't hidden by "Basketball" or "F1" filters
-                          setActiveCategory('All');
-                          
-                          const element = document.getElementById(`post-${result.doc_id}`);
-                          if (element) {
-                            // It's already loaded, scroll normally
-                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            element.classList.add('ring-4', 'ring-purple-500', 'transition-all', 'duration-500');
-                            setTimeout(() => element.classList.remove('ring-4', 'ring-purple-500'), 2000);
-                          } else {
-                            // HIGHLIGHT: The post isn't loaded yet. Engage the Auto-Seek engine!
-                            setAutoScrollTarget(result.doc_id);
-                          }
-                        }
-                      }}
-                      className="flex flex-col p-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${isPost ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
-                          {result.doc_type}
-                        </span>
-                      </div>
-                      <span className="text-sm font-bold text-gray-900 dark:text-white line-clamp-1">{result.title}</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">{result.content}</span>
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-            
-            {showSearchDropdown && searchResults.length === 0 && searchQuery.trim() && !isSearching && (
-              <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl p-4 text-center text-sm text-gray-500 z-50">
-                No results found.
-              </div>
-            )}
+            {/* Using gap-2 md:gap-4 for smooth responsive spacing between buttons */}
+            <div className="flex items-center gap-2 md:gap-4 shrink-0">
+              <ThemeToggle />
+              <AuthButton />
+            </div>
           </div>
 
-          {/* Placed the ThemeToggle next to the AuthButton */}
-          <div className="flex items-center space-x-4 shrink-0">
-            <ThemeToggle />
-            {/* Replaced the old manual login button with your new component */}
-            <AuthButton />
+          {/* Row 2: Navigation Section - Perfectly centered */}
+          {/* HIGHLIGHT: Added hidden md:flex to hide this row entirely on mobile screens */}
+          <div className="hidden md:flex justify-center gap-6 md:gap-8">
+            <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1 cursor-default">
+              Posts
+            </span>
+            <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
+              Reels
+            </Link>
+            <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
+              Match Center
+            </Link>
           </div>
-        </div>
-
-        {/* Navigation Section */}
-        <div className="flex justify-center space-x-8 mb-8">
-          <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1 cursor-default">
-            Posts
-          </span>
-          <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Reels
-          </Link>
-          {/* Added the brand new routing link for the dedicated Match Center page */}
-          <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Match Center
-          </Link>
         </div>
 
         {/* Removed the grid-cols layout entirely. The feed now beautifully centers itself. */}
@@ -621,7 +625,7 @@ export default function Home() {
                 {filteredPosts.map((post: any) => (
                   <div 
                     key={post.id} 
-                    id={`post-${post.id}`} // HIGHLIGHT: Ensure the ID is attached to the card for the scroll engine to find
+                    id={`post-${post.id}`} // Ensure the ID is attached to the card for the scroll engine to find
                     className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden"
                   >
                     
@@ -652,83 +656,88 @@ export default function Home() {
                     <h2 className="text-xl font-bold mb-3">{post.headline}</h2>
                     <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">{post.content}</p>
 
-                    {/* Bottom Row: Action Buttons */}
+                    {/* HIGHLIGHT: Grouped all action icons on the left with uniform gaps, pushed Source to the right */}
                     <div className="flex justify-between items-center w-full border-t border-gray-100 dark:border-gray-800 pt-4 mt-4 px-1 sm:px-2">
                         
-                        {/* The Like Button */}
-                        <button 
-                          onClick={() => handleLike(post.id)}
-                          className={`flex items-center space-x-1.5 transition-colors group ${post.userLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'}`}
-                        >
-                          <svg 
-                            xmlns="http://www.w3.org/2000/svg" 
-                            className="h-5 w-5 group-active:scale-110 transition-transform" 
-                            fill={post.userLiked ? "currentColor" : "none"} 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor" 
-                            strokeWidth={2}
+                        {/* Left Group: Primary Actions */}
+                        <div className="flex items-center gap-4 md:gap-6">
+                          {/* The Like Button */}
+                          <button 
+                            onClick={() => handleLike(post.id)}
+                            className={`flex items-center gap-1.5 transition-colors group ${post.userLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'}`}
                           >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                          </svg>
-                          <span className="text-sm font-semibold">{post.likes || 0}</span>
-                        </button>
+                            <svg 
+                              xmlns="http://www.w3.org/2000/svg" 
+                              className="h-5 w-5 group-active:scale-110 transition-transform" 
+                              fill={post.userLiked ? "currentColor" : "none"} 
+                              viewBox="0 0 24 24" 
+                              stroke="currentColor" 
+                              strokeWidth={2}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                            <span className="text-sm font-semibold">{post.likes || 0}</span>
+                          </button>
 
-                        {/* The Comment Button */}
-                        <button 
-                          onClick={() => openCommentDrawer(post)}
-                          className="flex items-center space-x-1.5 text-gray-400 hover:text-purple-500 transition-colors group"
-                          title="View Discussion"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          <span className="text-sm font-semibold">{post.commentCount || 0}</span>
-                        </button>
-
-                        {/* The Bookmark Button */}
-                        <button 
-                          onClick={() => handleSave(post.id)}
-                          className={`flex items-center space-x-1.5 transition-colors group ${post.userSaved ? 'text-blue-500' : 'text-gray-400 hover:text-blue-500'}`}
-                          title="Save this post"
-                        >
-                          <svg 
-                            xmlns="http://www.w3.org/2000/svg" 
-                            className="h-5 w-5 group-active:scale-110 transition-transform" 
-                            fill={post.userSaved ? "currentColor" : "none"} 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor" 
-                            strokeWidth={2}
+                          {/* The Comment Button */}
+                          <button 
+                            onClick={() => openCommentDrawer(post)}
+                            className="flex items-center gap-1.5 text-gray-400 hover:text-purple-500 transition-colors group"
+                            title="View Discussion"
                           >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                          </svg>
-                        </button>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            <span className="text-sm font-semibold">{post.commentCount || 0}</span>
+                          </button>
 
-                        {/* The Share Button */}
-                        <button 
-                          onClick={() => handleShare(post.id, post.url, post.headline)}
-                          className="flex items-center space-x-1 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors group relative"
-                          title="Share this post"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                          </svg>
-                          
-                          {copiedId === post.id && (
-                            <span className="absolute -top-10 -left-4 bg-gray-800 dark:bg-gray-700 text-white text-xs font-semibold px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-pulse">
-                              Copied!
-                            </span>
-                          )}
-                        </button>
+                          {/* The Bookmark Button */}
+                          <button 
+                            onClick={() => handleSave(post.id)}
+                            className={`flex items-center gap-1.5 transition-colors group ${post.userSaved ? 'text-blue-500' : 'text-gray-400 hover:text-blue-500'}`}
+                            title="Save this post"
+                          >
+                            <svg 
+                              xmlns="http://www.w3.org/2000/svg" 
+                              className="h-5 w-5 group-active:scale-110 transition-transform" 
+                              fill={post.userSaved ? "currentColor" : "none"} 
+                              viewBox="0 0 24 24" 
+                              stroke="currentColor" 
+                              strokeWidth={2}
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                            </svg>
+                          </button>
 
-                        {/* Read Source Link */}
-                        <a 
-                          href={post.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-sm text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-medium hidden sm:block ml-auto"
-                        >
-                          Read Source &rarr;
-                        </a>
+                          {/* The Share Button */}
+                          <button 
+                            onClick={() => handleShare(post.id, post.url, post.headline)}
+                            className="flex items-center gap-1 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors group relative"
+                            title="Share this post"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                            </svg>
+                            
+                            {copiedId === post.id && (
+                              <span className="absolute -top-10 -left-4 bg-gray-800 dark:bg-gray-700 text-white text-xs font-semibold px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-pulse">
+                                Copied!
+                              </span>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Right Group: Read Source Link pushed strictly to the right edge */}
+                        <div>
+                          <a 
+                            href={post.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-sm text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-bold"
+                          >
+                            Read Source &rarr;
+                          </a>
+                        </div>
                     </div>
 
                   </div>
@@ -765,14 +774,14 @@ export default function Home() {
       {/* Background Overlay */}
       {isCommentDrawerOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 z-40 transition-opacity" 
+          className="fixed inset-0 bg-black/60 z-70 transition-opacity" 
           onClick={() => setIsCommentDrawerOpen(false)}
         />
       )}
 
       {/* The Drawer Panel */}
       <div 
-        className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-white dark:bg-gray-900 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200 dark:border-gray-800 ${
+        className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-white dark:bg-gray-900 shadow-2xl z-70 transform transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200 dark:border-gray-800 ${
           isCommentDrawerOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -909,6 +918,19 @@ export default function Home() {
         </div>
       </div>
       
+      {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-16 z-[60] pb-[env(safe-area-inset-bottom)] px-4">
+        <Link href="/" className="text-gray-900 dark:text-white font-bold text-sm flex flex-col items-center pt-1 border-t-2 border-purple-500">
+          Posts
+        </Link>
+        <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
+          Reels
+        </Link>
+        <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
+          Match Center
+        </Link>
+      </div>
+
     </main>
   );
 }
