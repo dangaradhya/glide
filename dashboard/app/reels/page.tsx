@@ -14,6 +14,8 @@ import AuthButton from '@/components/AuthButton';
 // Import the ThemeToggle component
 import ThemeToggle from '@/components/ThemeToggle';
 import { useSearchParams } from 'next/navigation'; 
+// Added the Web Share API with a fallback to clipboard copying for maximum shareability across platforms
+import { Share } from '@capacitor/share';
 
 function ReelsContent() {
   // 2. STATE MANAGEMENT
@@ -339,11 +341,12 @@ function ReelsContent() {
     }
   };
 
-  // Upgraded Share function to hit the backend tracking route
+  // Share function to hit the backend tracking route and use Native Share
   const handleShare = async (id: number, video_id: string, title: string) => {
-    const shareUrl = `https://youtube.com/shorts/${video_id}`;
+    // Generate the deep link to this exact reel on your Vercel domain
+    const deepLink = `https://glide-green.vercel.app/reels?reelId=${video_id}`;
     
-    // 1. Tell the backend to increment the share counter (Background process)
+    // Tell the backend to increment the share counter (Background process)
     try {
         await fetch(`https://glide-sports.onrender.com/api/reels/${id}/share`, { method: 'POST' });
         // Optimistically update the UI share counter
@@ -354,27 +357,24 @@ function ReelsContent() {
         console.error("Failed to track share in DB", err);
     }
 
-    // 2. Execute the actual share action for the user
-    // We first check if the Web Share API is available in the user's browser. If it is, we use it to share the reel's 
-    // title and URL natively. If the Web Share API is not available, we fall back to copying the share URL to the clipboard 
-    // and showing a "Copied!" tooltip for user feedback.
-    if (navigator.share) {
+    // Execute the actual share action using Capacitor Native Share
+    try {
+      await Share.share({
+        title: 'Glide Reels',
+        text: `Check out this highlight: ${title}`,
+        url: deepLink,
+        dialogTitle: 'Share with friends',
+      });
+    } catch (err: any) {
+      console.error("Error sharing natively:", err);
+      
+      // Desktop fallback: Copy to Clipboard
       try {
-        await navigator.share({
-          title: 'Glide Reels',
-          text: `Check out this highlight: ${title}`,
-          url: shareUrl,
-        });
-      } catch (err) {
-        console.error("Error sharing natively:", err);
-      }
-    } else {
-      try {
-        await navigator.clipboard.writeText(shareUrl);
+        await navigator.clipboard.writeText(deepLink);
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 2000);
-      } catch (err) {
-        console.error("Failed to copy to clipboard:", err);
+      } catch (copyErr) {
+        console.error("Failed to copy to clipboard:", copyErr);
       }
     }
   };

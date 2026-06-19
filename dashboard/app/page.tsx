@@ -11,6 +11,8 @@ import Link from 'next/link';
 // Import your Google Auth and Theme Toggle component for use in the header
 import AuthButton from '@/components/AuthButton';
 import ThemeToggle from '@/components/ThemeToggle';
+// Capacitor Share API for native sharing functionality on mobile devices
+import { Share } from '@capacitor/share';
 
 export default function Home() {
   // 2. STATE MANAGEMENT
@@ -127,6 +129,24 @@ export default function Home() {
       setLoadingMore(false);
     }
   }, [posts, autoScrollTarget, hasMore, loadingMore, loading]);
+
+  // Deep Link Navigation Watcher for Posts (Runs once on app boot)
+  // If a user clicks a shared link (e.g., https://glide-green.vercel.app/#post-133), 
+  // this grabs the '133' and fires up your Auto-Seek engine automatically!
+  useEffect(() => {
+    const hash = window.location.hash;
+
+    // We check if the URL has a hash that starts with '#post-'. If it does, we extract 
+    // the post ID from the hash and set it as the target for our Auto-Seek engine.
+    if (hash && hash.startsWith('#post-')) {
+      const targetId = parseInt(hash.replace('#post-', ''), 10);
+      if (!isNaN(targetId)) {
+        setAutoScrollTarget(targetId);
+        // Clean up the URL so it doesn't re-trigger if the user manually refreshes the page
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }, []);
 
   // 3. THE NETWORK REQUEST 
   // Refactored Fetch Logic to accept a page number
@@ -325,26 +345,29 @@ export default function Home() {
   };
 
   // 6. THE SHARE FUNCTION
-  const handleShare = async (id: number, url: string, headline: string) => {
-    if (navigator.share) {
-      // Native Mobile Share
-      try {
-        await navigator.share({
-          title: 'Glide',
-          text: `Check out this news: ${headline}`,
-          url: url,
-        });
-      } catch (err) {
-        console.error("Error sharing natively:", err);
-      }
-    } else {
+  // Ensure the signature is EXACTLY (id, headline) - DO NOT pass url here!
+  const handleShare = async (id: number, headline: string) => {
+    // Generate the deep link to this exact post on your live Vercel domain
+    const deepLink = `https://glide-green.vercel.app/#post-${id}`;
+
+    try {
+      // Trigger the native Android share sheet
+      await Share.share({
+        title: 'Glide',
+        text: `Check out this news: ${headline}`,
+        url: deepLink,
+        dialogTitle: 'Share with buddies',
+      });
+    } catch (err: any) {
+      console.error("Error sharing natively:", err);
+      
       // Desktop Fallback: Copy to Clipboard
       try {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(deepLink);
         setCopiedId(id); // Trigger the "Copied!" tooltip
-        setTimeout(() => setCopiedId(null), 2000); // Hide tooltip after 2 seconds
-      } catch (err) {
-        console.error("Failed to copy to clipboard:", err);
+        setTimeout(() => setCopiedId(null), 2000); 
+      } catch (copyErr) {
+        console.error("Failed to copy to clipboard:", copyErr);
       }
     }
   };
@@ -480,7 +503,7 @@ export default function Home() {
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative transition-colors duration-300 overflow-hidden">
       
       {/* Changed max-w-6xl to max-w-3xl to perfectly center the single-column feed */}
-      {/* HIGHLIGHT: Added pb-20 md:pb-0 so the feed isn't hidden behind the new mobile bottom nav */}
+      {/* Added pb-20 md:pb-0 so the feed isn't hidden behind the new mobile bottom nav */}
       <div className="max-w-3xl mx-auto relative z-10 pb-20 md:pb-0">
         
         {/* Responsive Header Container */}
@@ -576,7 +599,7 @@ export default function Home() {
           </div>
 
           {/* Row 2: Navigation Section - Perfectly centered */}
-          {/* HIGHLIGHT: Added hidden md:flex to hide this row entirely on mobile screens */}
+          {/* Added hidden md:flex to hide this row entirely on mobile screens */}
           <div className="hidden md:flex justify-center gap-6 md:gap-8">
             <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1 cursor-default">
               Posts
@@ -656,7 +679,7 @@ export default function Home() {
                     <h2 className="text-xl font-bold mb-3">{post.headline}</h2>
                     <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">{post.content}</p>
 
-                    {/* HIGHLIGHT: Grouped all action icons on the left with uniform gaps, pushed Source to the right */}
+                    {/* Grouped all action icons on the left with uniform gaps, pushed Source to the right */}
                     <div className="flex justify-between items-center w-full border-t border-gray-100 dark:border-gray-800 pt-4 mt-4 px-1 sm:px-2">
                         
                         {/* Left Group: Primary Actions */}
@@ -711,16 +734,16 @@ export default function Home() {
 
                           {/* The Share Button */}
                           <button 
-                            onClick={() => handleShare(post.id, post.url, post.headline)}
+                            onClick={() => handleShare(post.id, post.headline)}
                             className="flex items-center gap-1 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors group relative"
                             title="Share this post"
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                             </svg>
                             
                             {copiedId === post.id && (
-                              <span className="absolute -top-10 -left-4 bg-gray-800 dark:bg-gray-700 text-white text-xs font-semibold px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-pulse">
+                              <span className="absolute -top-10 -left-4 bg-gray-800 dark:bg-gray-700 text-white text-xs font-semibold px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-bounce">
                                 Copied!
                               </span>
                             )}
