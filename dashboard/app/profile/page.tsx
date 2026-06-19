@@ -111,7 +111,7 @@ export default function ProfileVault() {
             </div>
 
             {/* The Tab Navigation */}
-            <div className="flex justify-center space-x-2 md:space-x-6 mb-8 border-b border-gray-200 dark:border-gray-800 pb-4 overflow-x-auto scrollbar-hide">
+            <div className="flex justify-start md:justify-center space-x-2 md:space-x-6 mb-8 border-b border-gray-200 dark:border-gray-800 pb-4 px-2 overflow-x-auto scrollbar-hide w-full">
               {[
                 { id: 'likedPosts', label: 'Liked Posts' },
                 { id: 'savedPosts', label: 'Saved Posts' },

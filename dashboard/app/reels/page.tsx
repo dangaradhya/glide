@@ -386,31 +386,34 @@ function ReelsContent() {
       {/* Top Navigation Bar with AuthButton integration */}
       {/* Adapted the gradient overlay for both light and dark themes */}
       {/* Added pt-[max(1.5rem,env(safe-area-inset-top))] to push header icons below the notch */}
-      <div className="absolute top-0 w-full z-50 p-6 pt-[max(1.5rem,env(safe-area-inset-top))] flex justify-between items-start bg-gradient-to-b from-gray-100/90 dark:from-black/80 to-transparent pointer-events-none">
+      <div className="absolute top-0 w-full z-50 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-gray-100/90 dark:from-black/80 via-gray-100/40 dark:via-black/40 to-transparent pointer-events-none">
         
-        {/* Empty left section to balance the flexbox */}
-        <div className="w-1/3"></div>
+        {/* Row 1: Logo & Authentication */}
+        <div className="flex justify-between items-center w-full mb-4 pointer-events-auto mt-2">
+          {/* Added the Glide Logo to balance the flex layout and match the home page */}
+          <Link href="/" className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0 drop-shadow-md">
+            Glide
+          </Link>
 
-        {/* Center Navigation */}
-        <div className="w-1/3 flex justify-center space-x-8 pointer-events-auto mt-2">
-          {/* Adapted the inactive/active link colors for light and dark themes */}
+          {/* Right side: Theme & Auth */}
+          <div className="flex items-center space-x-3 shrink-0">
+             <ThemeToggle />
+             <AuthButton />
+          </div>
+        </div>
+
+        {/* Row 2: Navigation Links (Moved to its own row to prevent mobile collisions) */}
+        <div className="flex justify-center items-center space-x-6 md:space-x-8 w-full pointer-events-auto pb-8">
           <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors drop-shadow-md">
             Posts
           </Link>
-          <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-gray-900 dark:border-white pb-1 drop-shadow-md">
+          <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-gray-900 dark:border-white pb-1 drop-shadow-md cursor-default">
             Reels
           </span>
           {/* Added the new routing link for the dedicated Match Center page */}
           <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors drop-shadow-md">
             Match Center
           </Link>
-        </div>
-
-        {/* Right Authentication */}
-        {/* Injected the ThemeToggle button next to the AuthButton */}
-        <div className="w-1/3 flex justify-end items-center space-x-4 pointer-events-auto">
-           <ThemeToggle />
-           <AuthButton />
         </div>
       </div>
 

@@ -652,37 +652,17 @@ export default function Home() {
                     <h2 className="text-xl font-bold mb-3">{post.headline}</h2>
                     <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">{post.content}</p>
 
-                    {/* Bottom Row now includes the interactive Like button */}
-                    <div className="flex justify-between items-center border-t border-gray-100 dark:border-gray-800 pt-4 mt-4">
-                      
-                      {/* Left Side: Excitement Meter */}
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Excitement:</span>
-                        <div className="flex">
-                          {/* We dynamically generate a visual meter based on the 1-10 excitement_level */}
-                          {[...Array(10)].map((_, i) => (
-                            <div 
-                              key={i} 
-                              className={`h-1.5 w-3 mx-px rounded-full ${i < post.excitement_level ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gray-200 dark:bg-gray-800'}`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Right Side: Like Button, Save Button, Share Button, and Read Source Link */}
-                      <div className="flex items-center space-x-6">
+                    {/* Bottom Row: Action Buttons */}
+                    <div className="flex justify-between items-center w-full border-t border-gray-100 dark:border-gray-800 pt-4 mt-4 px-1 sm:px-2">
                         
                         {/* The Like Button */}
                         <button 
                           onClick={() => handleLike(post.id)}
-                          // Force the button to be red if the user liked it
                           className={`flex items-center space-x-1.5 transition-colors group ${post.userLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-500'}`}
                         >
-                          {/* SVG Heart Icon */}
                           <svg 
                             xmlns="http://www.w3.org/2000/svg" 
                             className="h-5 w-5 group-active:scale-110 transition-transform" 
-                            // Fills the inside of the heart with color if liked
                             fill={post.userLiked ? "currentColor" : "none"} 
                             viewBox="0 0 24 24" 
                             stroke="currentColor" 
@@ -690,10 +670,10 @@ export default function Home() {
                           >
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                           </svg>
-                          {/* Fallback to 0 if post.likes is undefined/null */}
                           <span className="text-sm font-semibold">{post.likes || 0}</span>
                         </button>
 
+                        {/* The Comment Button */}
                         <button 
                           onClick={() => openCommentDrawer(post)}
                           className="flex items-center space-x-1.5 text-gray-400 hover:text-purple-500 transition-colors group"
@@ -729,12 +709,10 @@ export default function Home() {
                           className="flex items-center space-x-1 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors group relative"
                           title="Share this post"
                         >
-                          {/* SVG Share Icon */}
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                           </svg>
                           
-                          {/* Dynamic Tooltip: Only shows if this specific post was copied */}
                           {copiedId === post.id && (
                             <span className="absolute -top-10 -left-4 bg-gray-800 dark:bg-gray-700 text-white text-xs font-semibold px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap animate-pulse">
                               Copied!
@@ -742,15 +720,15 @@ export default function Home() {
                           )}
                         </button>
 
+                        {/* Read Source Link */}
                         <a 
                           href={post.url} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="text-sm text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-medium hidden sm:block"
+                          className="text-sm text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-medium hidden sm:block ml-auto"
                         >
                           Read Source &rarr;
                         </a>
-                      </div>
                     </div>
 
                   </div>
