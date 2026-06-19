@@ -34,7 +34,7 @@ export default function AuthButton() {
           grantOfflineAccess: true,
         });
       } catch (e) {
-        alert("Capacitor Init Error: " + JSON.stringify(e));
+        console.error("Capacitor Init Error: ", e);
       }
     }
 
@@ -63,18 +63,18 @@ export default function AuthButton() {
         setUser(data.user);
         window.location.reload();
       } else {
-        // Will now alert exactly what your backend is complaining about
-        alert("Backend Rejected Login: " + (data.error || "Unknown error"));
+        // Silently log what your backend is complaining about
+        console.error("Backend Rejected Login: ", data.error || "Unknown error");
       }
     } catch (error: any) {
-      // Will catch CORS issues or if Render is completely offline
-      alert("Network Fetch Failed: " + error.message);
+      // Silently catch CORS issues or if Render is completely offline
+      console.error("Network Fetch Failed: ", error.message);
     }
   };
 
   const handleWebLoginSuccess = async (credentialResponse: any) => {
     if (!credentialResponse.credential) {
-      alert("Google didn't return a web token!");
+      console.error("Google didn't return a web token!");
       return;
     }
     await authenticateWithServer(credentialResponse.credential);
@@ -84,13 +84,13 @@ export default function AuthButton() {
     try {
       const googleUser = await GoogleAuth.signIn();
       if (!googleUser.authentication.idToken) {
-        alert("Google didn't return a native token!");
+        console.error("Google didn't return a native token!");
         return;
       }
       await authenticateWithServer(googleUser.authentication.idToken);
     } catch (error: any) {
-      // Will alert if the Android Google pop-up crashes
-      alert("Native Login Error: " + JSON.stringify(error));
+      // Silently catch if the Android Google pop-up is dismissed or crashes (e.g., error 12501)
+      console.error("Native Login Error: ", error);
     }
   };
 
@@ -154,7 +154,7 @@ export default function AuthButton() {
       <div className="shadow-lg rounded-full overflow-hidden border border-gray-200 dark:border-gray-700">
           <GoogleLogin
               onSuccess={handleWebLoginSuccess}
-              onError={() => alert('Google Web Form Error: Login Failed')}
+              onError={() => console.error('Google Web Form Error: Login Failed')}
               theme={resolvedTheme === 'dark' ? 'filled_black' : 'outline'}
               shape="pill"
               text="continue_with"
