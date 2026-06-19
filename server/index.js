@@ -34,6 +34,7 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // Middleware are functions that intercept incoming HTTP requests before they hit your routes.
 // Secure CORS policy restricting access to specific frontend domains
 const allowedOrigins = [
+    'http://localhost:3000',          // Local development
     'https://glide-green.vercel.app', // Your live web app
     'capacitor://localhost',          // iOS native app
     'https://localhost',              // Android native app (Secure default)
