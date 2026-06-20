@@ -1004,8 +1004,8 @@ const cleanOldData = () => {
     console.log("🧹 Running 7-day data retention sweep...");
     db.serialize(() => {
         // Define the exact exclusion rules (Approach A). Keep items if liked, saved, or commented!
-        const deadPosts = `timestamp <= datetime('now', '-7 days') AND id NOT IN (SELECT post_id FROM saved_posts) AND id NOT IN (SELECT post_id FROM post_likes) AND id NOT IN (SELECT post_id FROM comments)`;
-        const deadReels = `timestamp <= datetime('now', '-7 days') AND id NOT IN (SELECT reel_id FROM saved_reels) AND id NOT IN (SELECT reel_id FROM reel_likes)`;
+        const deadPosts = `timestamp <= datetime('now', '-2 minutes') AND id NOT IN (SELECT post_id FROM saved_posts) AND id NOT IN (SELECT post_id FROM post_likes) AND id NOT IN (SELECT post_id FROM comments)`;
+        const deadReels = `timestamp <= datetime('now', '-2 minutes') AND id NOT IN (SELECT reel_id FROM saved_reels) AND id NOT IN (SELECT reel_id FROM reel_likes)`;
 
         // Remove old entries from the FTS5 global_search index ONLY for truly dead items
         db.run(`DELETE FROM global_search WHERE doc_type = 'POST' AND doc_id IN (SELECT id FROM posts WHERE ${deadPosts})`);
@@ -1041,7 +1041,7 @@ app.get('/api/admin/stats', (req, res) => {
 
 // Run the cleanup immediately on boot, then every 12 hours
 cleanOldData();
-setInterval(cleanOldData, 12 * 60 * 60 * 1000);
+setInterval(cleanOldData, 60 * 1000);
 
 // Error Handling Middleware
 Sentry.setupExpressErrorHandler(app);
