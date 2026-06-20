@@ -343,16 +343,12 @@ function ReelsContent() {
 
   // Share function to hit the backend tracking route and use Native Share
   const handleShare = async (id: number, video_id: string, title: string) => {
-    // Generate the deep link to this exact reel on your Vercel domain
-    const deepLink = `https://glide-green.vercel.app/reels?reelId=${video_id}`;
+    const deepLink = `https://your-glide-app.vercel.app/reels?reelId=${video_id}`;
     
     // Tell the backend to increment the share counter (Background process)
+    // We keep the fetch for your analytics, but REMOVED the setReels UI increment
     try {
-        await fetch(`https://glide-sports.onrender.com/api/reels/${id}/share`, { method: 'POST' });
-        // Optimistically update the UI share counter
-        setReels(currentReels => currentReels.map(reel =>
-          reel.id === id ? { ...reel, shares: (reel.shares || 0) + 1 } : reel
-        ));
+        fetch(`https://glide-sports.onrender.com/api/reels/${id}/share`, { method: 'POST' });
     } catch (err) {
         console.error("Failed to track share in DB", err);
     }
@@ -529,7 +525,6 @@ function ReelsContent() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                       </svg>
                     </div>
-                    <span className="text-white text-xs font-semibold drop-shadow-md">{reel.shares || 0}</span>
                     
                     {copiedId === reel.id && (
                       <span className="absolute right-14 top-2 bg-white text-black text-xs font-bold px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap animate-bounce">
