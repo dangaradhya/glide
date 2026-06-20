@@ -37,13 +37,13 @@ const REELS_SOURCES = [
 const PORT = process.env.PORT || 3000;
 
 // This is the URL of the Express API endpoint where we will POST the formatted articles to be saved in the database
-const GLIDE_API_URL = `http://localhost:${PORT}/api/posts`;
+const GLIDE_API_URL = `http://127.0.0.1:${PORT}/api/posts`;
 // The URL of our new Deduplication Gate route on the Express Server
-const CHECK_URL = `http://localhost:${PORT}/api/posts/check`;
+const CHECK_URL = `http://127.0.0.1:${PORT}/api/posts/check`;
 
 // URLs for the Reels pipeline
-const REELS_API_URL = `http://localhost:${PORT}/api/reels`;
-const REELS_CHECK_URL = `http://localhost:${PORT}/api/reels/check`;
+const REELS_API_URL = `http://127.0.0.1:${PORT}/api/reels`;
+const REELS_CHECK_URL = `http://127.0.0.1:${PORT}/api/reels/check`;
 
 // 2. The "Is it a Short?" Network Trick
 // This pings YouTube's servers. If YouTube redirects the /shorts/ URL to a standard /watch/ URL, it's a long-form video.

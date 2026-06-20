@@ -388,7 +388,9 @@ app.post('/api/posts', verifyScraper, (req, res) => {
 // The frontend immediately fires off a GET request to your server asking for the latest data to display.
 app.get('/api/posts', (req, res) => {
     // Force Cloudflare and mobile browsers to NEVER cache this feed
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.header('Expires', '-1');
+    res.header('Pragma', 'no-cache');
 
     // Extract query parameters with fallbacks (default to page 1, limit 5)
     // We use a small limit of 5 so you can easily test the "Load More" button!
@@ -728,7 +730,9 @@ app.post('/api/reels', verifyScraper, (req, res) => {
 // Upgraded GET /api/reels to safely prioritize deep-linked reel IDs from the profile vault
 app.get('/api/reels', (req, res) => {
     // Force Cloudflare and mobile browsers to NEVER cache this feed
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.header('Expires', '-1');
+    res.header('Pragma', 'no-cache');
 
     // We still allow a 'limit' query parameter to control how many reels we return at once (default 3).
     const limit = parseInt(req.query.limit) || 3;
@@ -1042,11 +1046,12 @@ setInterval(cleanOldData, 12 * 60 * 60 * 1000);
 Sentry.setupExpressErrorHandler(app);
 
 // 15. SERVER BINDING
-// Finally, we bind our Express server to the specified PORT and log a message to the console indicating that the server is running and on which URL it can be accessed.
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
+    
+    // Wait 2 seconds AFTER the server binds to the port to ensure it is 100% ready before unleashing the scraper
+    setTimeout(() => {
+        require('./scraper.js');
+    }, 2000);
 });
 
-// Start the scraper when the server starts to ensure it runs in the same environment and has access to the same database and 
-// JWT secret for authentication.
-require('./scraper.js');
