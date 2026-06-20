@@ -21,7 +21,8 @@ const { OAuth2Client } = require('google-auth-library');
 // 2. INITIALIZATION
 // This creates our application instance. Think of this like initializing your Axum router in Rust.
 const app = express();
-const PORT = 3000; // The port our server will listen on
+// The port our server will listen on
+const PORT = process.env.PORT || 3000; 
 
 // Pulled strictly from .env for security (no fallback)
 const JWT_SECRET = process.env.JWT_SECRET;
