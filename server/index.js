@@ -419,12 +419,12 @@ app.get('/api/posts', (req, res) => {
              EXISTS(SELECT 1 FROM saved_posts WHERE post_id = posts.id AND user_id = ?) AS userSaved,
              (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
            FROM posts 
-           WHERE timestamp >= datetime('now', '--2 minutes') 
+           WHERE timestamp >= datetime('now', '-7 days') 
            ORDER BY timestamp DESC LIMIT ? OFFSET ?`
         : `SELECT posts.*, 0 AS userLiked, 0 AS userSaved,
              (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount 
            FROM posts 
-           WHERE timestamp >= datetime('now', '--2 minutes') 
+           WHERE timestamp >= datetime('now', '-7 days') 
            ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
 
     // The parameters we pass to the database depend on whether we have a userId or not. 
@@ -770,8 +770,8 @@ app.get('/api/reels', (req, res) => {
         whereClauses.push(`video_id = ?`);
         params.push(forceId);
     } else {
-        // Ensures the main random feed ONLY pulls fresh reels from the last -2 minutes.
-        whereClauses.push(`timestamp >= datetime('now', '--2 minutes')`);
+        // Ensures the main random feed ONLY pulls fresh reels from the last 7 days.
+        whereClauses.push(`timestamp >= datetime('now', '-7 days')`);
 
         // Convert the string "1,4,7" into an array of integers [1, 4, 7]
         // We also filter out any non-numeric values just in case the frontend sends something unexpected.
@@ -825,8 +825,8 @@ app.get('/api/reels', (req, res) => {
                 ? `SELECT reels.*, 
                    EXISTS(SELECT 1 FROM reel_likes WHERE reel_id = reels.id AND user_id = ?) AS userLiked,
                    EXISTS(SELECT 1 FROM saved_reels WHERE reel_id = reels.id AND user_id = ?) AS userSaved
-                   FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '--2 minutes') ORDER BY RANDOM() LIMIT ?`
-                : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '--2 minutes') ORDER BY RANDOM() LIMIT ?`;
+                   FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-7 days') ORDER BY RANDOM() LIMIT ?`
+                : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-7 days') ORDER BY RANDOM() LIMIT ?`;
 
             let fallbackParams = userId ? [userId, userId, forceId, limit] : [forceId, limit];
             
@@ -988,13 +988,13 @@ app.post('/api/users/me/preferences', authenticateToken, (req, res) => {
 });
 
 // Data Retention Cleanup Routine (7-Day Limit)
-// This function runs every 12 hours to delete posts and reels older than -2 minutes, keeping the database light and fast.
+// This function runs every 12 hours to delete posts and reels older than 7 days, keeping the database light and fast.
 const cleanOldData = () => {
     console.log("🧹 Running 7-day data retention sweep...");
     db.serialize(() => {
         // Define the exact exclusion rules (Approach A). Keep items if liked, saved, or commented!
-        const deadPosts = `timestamp <= datetime('now', '--2 minutes') AND id NOT IN (SELECT post_id FROM saved_posts) AND id NOT IN (SELECT post_id FROM post_likes) AND id NOT IN (SELECT post_id FROM comments)`;
-        const deadReels = `timestamp <= datetime('now', '--2 minutes') AND id NOT IN (SELECT reel_id FROM saved_reels) AND id NOT IN (SELECT reel_id FROM reel_likes)`;
+        const deadPosts = `timestamp <= datetime('now', '-7 days') AND id NOT IN (SELECT post_id FROM saved_posts) AND id NOT IN (SELECT post_id FROM post_likes) AND id NOT IN (SELECT post_id FROM comments)`;
+        const deadReels = `timestamp <= datetime('now', '-7 days') AND id NOT IN (SELECT reel_id FROM saved_reels) AND id NOT IN (SELECT reel_id FROM reel_likes)`;
 
         // Remove old entries from the FTS5 global_search index ONLY for truly dead items
         db.run(`DELETE FROM global_search WHERE doc_type = 'POST' AND doc_id IN (SELECT id FROM posts WHERE ${deadPosts})`);
@@ -1030,7 +1030,7 @@ app.get('/api/admin/stats', (req, res) => {
 
 // Run the cleanup immediately on boot, then every 12 hours
 cleanOldData();
-setInterval(cleanOldData, 60 * 1000);
+setInterval(cleanOldData, 12 * 60 * 60 * 1000);
 
 // Error Handling Middleware
 Sentry.setupExpressErrorHandler(app);
