@@ -8,6 +8,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+// Imported useRouter to safely navigate inside the mobile app wrapper
+import { useRouter } from 'next/navigation';
+
 // Import your Google Auth and Theme Toggle component for use in the header
 import AuthButton from '@/components/AuthButton';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -15,6 +18,9 @@ import ThemeToggle from '@/components/ThemeToggle';
 import { Share } from '@capacitor/share';
 
 export default function Home() {
+  // Initialize the Next.js router
+  const router = useRouter();
+
   // 2. STATE MANAGEMENT
   // Think of state as variables that, when updated, automatically redraw the screen.
   // 'posts' holds the array of data from SQLite. 'loading' gives us a cool UI state.
@@ -545,18 +551,18 @@ export default function Home() {
                 <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl overflow-hidden max-h-96 overflow-y-auto z-50">
                   {searchResults.map((result: any, idx: number) => {
                     const isPost = result.doc_type === 'POST';
-                    const targetHref = isPost ? `#post-${result.doc_id}` : `/reels?reelId=${result.video_id}`;
 
+                    // Swapped the raw <a> tag for a <button> that triggers Next.js router.push(). 
+                    // This physically stops Capacitor from treating the click as a hard app reload, 
+                    // allowing seamless navigation to the Reels tab!
                     return (
-                      <a 
+                      <button 
                         key={idx} 
-                        href={targetHref} 
-                        target="_self"
                         onClick={(e) => {
+                          e.preventDefault(); 
+                          setShowSearchDropdown(false);
+                          
                           if (isPost) {
-                            e.preventDefault(); 
-                            setShowSearchDropdown(false);
-                            
                             // Reset the category filter to ensure the post isn't hidden by "Basketball" or "F1" filters
                             setActiveCategory('All');
                             
@@ -570,9 +576,12 @@ export default function Home() {
                               // The post isn't loaded yet. Engage the Auto-Seek engine!
                               setAutoScrollTarget(result.doc_id);
                             }
+                          } else {
+                            // Next.js internal router bypasses the Capacitor bug!
+                            router.push(`/reels?reelId=${result.video_id}`);
                           }
                         }}
-                        className="flex flex-col p-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        className="flex flex-col w-full text-left p-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${isPost ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
@@ -581,7 +590,7 @@ export default function Home() {
                         </div>
                         <span className="text-sm font-bold text-gray-900 dark:text-white line-clamp-1">{result.title}</span>
                         <span className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">{result.content}</span>
-                      </a>
+                      </button>
                     );
                   })}
                 </div>

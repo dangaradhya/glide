@@ -34,6 +34,10 @@ function ReelsContent() {
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   // Tracks the last video we restarted so we don't restart it again on unpause
   const lastPlayedIdRef = useRef<number | null>(null);
+
+  // Added isGlobalMuted to handle strict desktop browser autoplay policies.
+  // The first video will start muted until the user's first physical interaction (click/tap)
+  const [isGlobalMuted, setIsGlobalMuted] = useState<boolean>(true);
   
   // State for the "Copied!" tooltip when sharing
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -188,6 +192,45 @@ function ReelsContent() {
     return () => observer.disconnect();
   }, [reels]);
 
+  // The YouTube API Controller
+  // Whenever the active reel or the play state changes, we send a message to the iframes.
+  useEffect(() => {
+     // We loop through all the reels and get their corresponding iframes by ID. If the iframe 
+    // exists and has a contentWindow, we check if this reel is the active one and if it should be playing. 
+    // If it is the active reel and should be playing, we send a postMessage to the iframe to play the video. 
+    // For all other reels (or if the user has manually paused), we send a postMessage to pause the video. 
+    // This ensures that only the video currently in view plays, while all others are paused, creating a 
+    // seamless viewing experience as the user scrolls through the reels.
+    reels.forEach((reel) => {
+      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
+      
+      // If the iframe exists and has a contentWindow (i.e., it's loaded), we check if this reel is the active one and if it should be playing.
+      if (iframe && iframe.contentWindow) {
+        if (reel.id === activeReelId && isPlaying) {
+          
+          // Check if this is a NEW video snapping into view
+          if (lastPlayedIdRef.current !== activeReelId) {
+             // If it's new, reset it to the beginning by sending seekTo(0) to reset the video every time it comes into view.
+             iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
+             lastPlayedIdRef.current = activeReelId;
+          }
+          
+          // Unmute ONLY if the user has globally satisfied the browser interaction policy
+          if (!isGlobalMuted) {
+            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+          }
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+          
+        } else {
+          // Send PAUSE command to ALL OTHER videos, or if the user manually paused
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
+        }
+      }
+    });
+  // Added isGlobalMuted to the dependency array so it can trigger unmuting
+  }, [activeReelId, isPlaying, isGlobalMuted, reels]);
+
   // The Infinite Scroll Observer
   useEffect(() => {
     if (!hasMore || loadingMore) return;
@@ -214,45 +257,6 @@ function ReelsContent() {
   // Include reels in dependency array so the observer always has the latest list of IDs
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, loadingMore, reels]);
-
-  // The YouTube API Controller
-  // Whenever the active reel or the play state changes, we send a message to the iframes.
-  useEffect(() => {
-    // We loop through all the reels and get their corresponding iframes by ID. If the iframe 
-    // exists and has a contentWindow, we check if this reel is the active one and if it should be playing. 
-    // If it is the active reel and should be playing, we send a postMessage to the iframe to play the video. 
-    // For all other reels (or if the user has manually paused), we send a postMessage to pause the video. 
-    // This ensures that only the video currently in view plays, while all others are paused, creating a 
-    // seamless viewing experience as the user scrolls through the reels.
-    reels.forEach((reel) => {
-      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
-      
-      if (iframe && iframe.contentWindow) {
-        if (reel.id === activeReelId && isPlaying) {
-          
-          // Check if this is a NEW video snapping into view
-          if (lastPlayedIdRef.current !== activeReelId) {
-             // If it's new, reset it to the beginning by sending seekTo(0) to reset the video every time it comes into view, 
-             // ensuring a consistent viewing experience.
-             iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
-             // Update our memory to remember we just restarted this one
-             lastPlayedIdRef.current = activeReelId;
-          }
-          
-          // Always send the play command when isPlaying is true
-          // Unmute the video since we dynamically load it muted to prevent audio bleed
-          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
-          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-          
-        } else {
-          // Send PAUSE command to ALL OTHER videos, or if the user manually paused
-          // Mute inactive videos so their background autoplay audio doesn't bleed while waiting for pause
-          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
-          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
-        }
-      }
-    });
-  }, [activeReelId, isPlaying, reels]);
 
   // Hybrid UI Like Function
   const handleLike = async (id: number) => {
@@ -495,7 +499,10 @@ function ReelsContent() {
                       onLoad={(e) => {
                         if (activeReelId === reel.id && isPlaying) {
                           const iframeNode = e.target as HTMLIFrameElement;
-                          iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                          // Ensure initial load respects the global interaction state
+                          if (!isGlobalMuted) {
+                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                          }
                           iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
                         }
                       }}
@@ -514,11 +521,34 @@ function ReelsContent() {
                   />
                 </div>
 
+                {/* The "Tap to Unmute" Graphic. Only shows on the very first un-interacted video */}
+                {isGlobalMuted && activeReelId === reel.id && isPlaying && (
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-black/60 text-white px-5 py-2.5 rounded-full backdrop-blur-md flex items-center gap-2 animate-pulse pointer-events-none drop-shadow-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.809L5 14H3a2 2 0 01-2-2V8a2 2 0 012-2h2l3.293-2.809a1 1 0 01.09-.011zM13.707 5.293a1 1 0 011.414 0 8.998 8.998 0 012.879 6.707 8.998 8.998 0 01-2.879 6.707 1 1 0 11-1.414-1.414 6.998 6.998 0 002.293-5.293 6.998 6.998 0 00-2.293-5.293 1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-sm font-bold tracking-wide">Tap to Unmute</span>
+                  </div>
+                )}
+
                 {/* The Transparent Overlay (The Click Catcher) */}
                 <div 
                   className="absolute inset-0 z-20 cursor-pointer"
                   onClick={() => {
                     if (activeReelId === reel.id) {
+                      
+                      // The crucial fix! If the browser is currently muting the feed,
+                      // the first tap will UNMUTE it without pausing the video. 
+                      if (isGlobalMuted) {
+                        setIsGlobalMuted(false);
+                        const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
+                        if (iframe && iframe.contentWindow) {
+                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                        }
+                        return; // Exit early so we don't accidentally pause it!
+                      }
+
+                      // Normal Play/Pause functionality resumes after the first tap
                       const nextIsPlaying = !isPlaying;
                       setIsPlaying(nextIsPlaying);
                       
