@@ -240,11 +240,13 @@ function ReelsContent() {
           }
           
           // Always send the play command when isPlaying is true
+          // Unmute the video since we dynamically load it muted to prevent audio bleed
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
           
         } else {
           // Send PAUSE command to ALL OTHER videos, or if the user manually paused
+          // Mute inactive videos so their background autoplay audio doesn't bleed while waiting for pause
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
         }
@@ -485,7 +487,7 @@ function ReelsContent() {
                     <iframe
                       id={`reel-player-${reel.id}`}
                       className="w-full h-full pointer-events-none" 
-                      src={`https://www.youtube.com/embed/${reel.video_id}?enablejsapi=1&autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&disablekb=1`}
+                      src={`https://www.youtube-nocookie.com/embed/${reel.video_id}?enablejsapi=1&autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&disablekb=1`}
                       title={reel.title}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
