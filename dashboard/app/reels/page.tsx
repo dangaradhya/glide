@@ -375,7 +375,7 @@ function ReelsContent() {
 
   // Share function to hit the backend tracking route and use Native Share
   const handleShare = async (id: number, video_id: string, title: string) => {
-    const deepLink = `https://your-glide-app.vercel.app/reels?reelId=${video_id}`;
+    const deepLink = `https://glide-green.vercel.app/reels?reelId=${video_id}`;
     
     // Tell the backend to increment the share counter (Background process)
     // We keep the fetch for your analytics, but REMOVED the setReels UI increment
