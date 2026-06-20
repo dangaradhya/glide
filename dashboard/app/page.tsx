@@ -506,18 +506,21 @@ export default function Home() {
       {/* Added pb-20 md:pb-0 so the feed isn't hidden behind the new mobile bottom nav */}
       <div className="max-w-3xl mx-auto relative z-10 pb-20 md:pb-0">
         
-        {/* Responsive Header Container */}
+      {/* Responsive Header Container */}
         {/* We use flex-col on the main wrapper, splitting the header into 2 distinct rows so nothing crashes on mobile */}
-        <div className="w-full z-50 mb-8 flex flex-col transition-all relative"> 
+        {/* Changed mb-8 to mb-3 md:mb-8 to dramatically tighten the gap below the header on mobile */}
+        <div className="w-full z-50 mb-3 md:mb-8 flex flex-col transition-all relative"> 
           
           {/* Row 1: Logo, Search, and Auth - Spreads out on desktop, tight on mobile */}
-          <div className="flex justify-between items-center w-full mb-4 md:mb-6">
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0">
+          {/* Changed mb-4 to mb-2 and gap-y-4 to gap-y-3 to pull the search bar closer to the top elements */}
+          <div className="flex flex-wrap justify-between items-center w-full mb-2 md:mb-6 gap-y-3">
+            
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0 order-1">
               Glide
             </h1>
             
             {/* The Global Search Bar Component */}
-            <div className="flex-1 max-w-sm mx-4 relative hidden sm:block">
+            <div className="w-full md:w-auto md:flex-1 md:max-w-sm mx-0 md:mx-4 relative order-3 md:order-2 z-40">
               <div className="relative">
                 <input 
                   type="text" 
@@ -592,7 +595,8 @@ export default function Home() {
             </div>
 
             {/* Using gap-2 md:gap-4 for smooth responsive spacing between buttons */}
-            <div className="flex items-center gap-2 md:gap-4 shrink-0">
+            {/* Added order-2 on mobile so the Auth buttons stay top-right, next to the logo. */}
+            <div className="flex items-center gap-2 md:gap-4 shrink-0 order-2 md:order-3">
               <ThemeToggle />
               <AuthButton />
             </div>
@@ -626,7 +630,8 @@ export default function Home() {
           ) : (
             <>
               {/* The Category Filter Bar UI */}
-              <div className="flex space-x-3 overflow-x-auto pb-4 mb-6 scrollbar-hide">
+              {/* Changed pb-4 mb-6 to pb-2 mb-3 md:pb-4 md:mb-6. This pulls the first post card right up under the buttons! */}
+              <div className="flex space-x-3 overflow-x-auto pb-2 mb-3 md:pb-4 md:mb-6 scrollbar-hide">
                 {uniqueCategories.map(category => (
                   <button
                     key={category}
@@ -649,7 +654,7 @@ export default function Home() {
                   <div 
                     key={post.id} 
                     id={`post-${post.id}`} // Ensure the ID is attached to the card for the scroll engine to find
-                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden"
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 md:p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden"
                   >
                     
                     {/* Top Row: Category Badge and Timestamp */}
