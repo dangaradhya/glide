@@ -26,6 +26,9 @@ function ReelsContent() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // State to track the ID of the first newly loaded reel so we can auto-scroll to it
+  const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
+
   // State to track which video is on screen and if it is paused
   const [activeReelId, setActiveReelId] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
@@ -69,9 +72,18 @@ function ReelsContent() {
         // We use a quick check to see if the new reel already exists in the current state before adding it.
         setReels(prevReels => {
           const newReels = [...prevReels];
+          let firstNewAdded = false;
+
           data.forEach((newReel: any) => {
             if (!newReels.find(r => r.id === newReel.id)) {
               newReels.push(newReel);
+              
+              // If this is an infinite scroll load (not the initial load), 
+              // capture the ID of the very first new reel we just fetched.
+              if (!firstNewAdded && prevReels.length > 0) {
+                 setPendingScrollId(newReel.id);
+                 firstNewAdded = true;
+              }
             }
           });
           return newReels;
@@ -99,6 +111,22 @@ function ReelsContent() {
     // We intentionally leave out dependencies here because we only want to fetch once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-Scroll Bridge Effect
+  // When the new batch of reels hits the screen, this listener instantly smooth-scrolls 
+  // the user directly into the first new video, bypassing the "scrolling wall" glitch entirely.
+  useEffect(() => {
+    if (pendingScrollId) {
+      const el = document.querySelector(`[data-id="${pendingScrollId}"]`);
+      if (el) {
+        // Changed behavior to 'auto' for an instant snap, and dropped setTimeout to 10ms for immediate execution
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setPendingScrollId(null);
+        }, 10);
+      }
+    }
+  }, [reels, pendingScrollId]);
 
   // Deep Link Navigation Watcher
   // When a user lands from the profile vault page with a targetReelId parameter in the URL,
@@ -430,26 +458,38 @@ function ReelsContent() {
         <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
           {reels.map((reel) => (
             // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
+            // Added `snap-always` to completely block the user from over-swiping multiple videos at once
             <div 
               key={reel.id} 
               data-id={reel.id} // Used by the Intersection Observer
               data-video-id={reel.video_id}
-              className="reel-container h-screen w-full flex flex-col items-center justify-center snap-center relative"
+              className="reel-container h-screen w-full flex flex-col items-center justify-center snap-center snap-always relative"
             >
               {/* The Video Container */}
               {/* Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl) */}
               <div className="w-full h-full md:max-w-md md:h-[85vh] bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800">
                 
                 {/* The Scale Trick Wrapper */}
-                <div className="absolute top-1/2 left-1/2 w-[125%] h-[125%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                <div className="absolute top-1/2 left-1/2 w-[120%] h-[120%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                  {/* Added &autoplay=1 to the URL to aggressively bypass YouTube's paused state when loading */}
                   <iframe
                     id={`reel-player-${reel.id}`}
                     className="w-full h-full pointer-events-none" 
-                    src={`https://www.youtube.com/embed/${reel.video_id}?enablejsapi=1&autoplay=0&controls=0&rel=0&modestbranding=1&loop=1&playlist=${reel.video_id}&playsinline=1&iv_load_policy=3&disablekb=1`}
+                    src={`https://www.youtube.com/embed/${reel.video_id}?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&loop=1&playlist=${reel.video_id}&playsinline=1&iv_load_policy=3&disablekb=1`}
                     title={reel.title}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   ></iframe>
+                </div>
+
+                {/* Dropped the delay and duration from 600/700ms down to 300ms. 
+                    This makes the thumbnail disappear much faster, totally eliminating the visual lag when you pause/play the reel! */}
+                <div className={`absolute inset-0 z-10 transition-opacity duration-300 pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[300ms]' : 'opacity-100 delay-0'}`}>
+                  <img 
+                    src={`https://i.ytimg.com/vi/${reel.video_id}/hqdefault.jpg`} 
+                    alt={reel.title}
+                    className="w-full h-full object-cover scale-105"
+                  />
                 </div>
 
                 {/* The Transparent Overlay (The Click Catcher) */}
@@ -544,16 +584,17 @@ function ReelsContent() {
             </div>
           ))}
 
-          {/* Infinite Scroll Sentinel replacing the Load More button */}
+          {/* Removed `snap-center` and reduced the height of the sentinel block. 
+              This completely eliminates the glitchy infinite-snap loop when loading new videos! */}
           {hasMore && (
-            <div id="reels-scroll-sentinel" className="h-[20vh] w-full flex items-center justify-center snap-center">
+            <div id="reels-scroll-sentinel" className="h-24 w-full flex items-center justify-center shrink-0">
               {loadingMore && (
-                <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
               )}
             </div>
           )}
           {!hasMore && (
-             <div className="h-[20vh] w-full flex items-center justify-center snap-center">
+             <div className="h-24 w-full flex items-center justify-center shrink-0">
                 <p className="text-gray-500 dark:text-gray-400 font-medium">You've caught up on all the highlights!</p>
              </div>
           )}
