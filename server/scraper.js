@@ -33,14 +33,17 @@ const REELS_SOURCES = [
     { name: 'House of Highlights', playlistId: 'UUqQo7ewe87aYAe7ub5UqXMw' }
 ];
 
+// Dynamically grab Render's port, fallback to 3000 locally
+const PORT = process.env.PORT || 3000;
+
 // This is the URL of the Express API endpoint where we will POST the formatted articles to be saved in the database
-const GLIDE_API_URL = 'https://glide-sports.onrender.com/api/posts'; 
+const GLIDE_API_URL = `http://localhost:${PORT}/api/posts`;
 // The URL of our new Deduplication Gate route on the Express Server
-const CHECK_URL = 'https://glide-sports.onrender.com/api/posts/check';
+const CHECK_URL = `http://localhost:${PORT}/api/posts/check`;
 
 // URLs for the Reels pipeline
-const REELS_API_URL = 'https://glide-sports.onrender.com/api/reels';
-const REELS_CHECK_URL = 'https://glide-sports.onrender.com/api/reels/check';
+const REELS_API_URL = `http://localhost:${PORT}/api/reels`;
+const REELS_CHECK_URL = `http://localhost:${PORT}/api/reels/check`;
 
 // 2. The "Is it a Short?" Network Trick
 // This pings YouTube's servers. If YouTube redirects the /shorts/ URL to a standard /watch/ URL, it's a long-form video.

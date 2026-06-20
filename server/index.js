@@ -387,6 +387,9 @@ app.post('/api/posts', verifyScraper, (req, res) => {
 // Big Picture: When a user opens Glide on their phone or laptop, the UI is completely empty. 
 // The frontend immediately fires off a GET request to your server asking for the latest data to display.
 app.get('/api/posts', (req, res) => {
+    // Force Cloudflare and mobile browsers to NEVER cache this feed
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+
     // Extract query parameters with fallbacks (default to page 1, limit 5)
     // We use a small limit of 5 so you can easily test the "Load More" button!
     const page = parseInt(req.query.page) || 1;
@@ -724,6 +727,9 @@ app.post('/api/reels', verifyScraper, (req, res) => {
 // Replaced the 'page/offset' chronological logic with a dynamic 'exclude' list and 'ORDER BY RANDOM()'.
 // Upgraded GET /api/reels to safely prioritize deep-linked reel IDs from the profile vault
 app.get('/api/reels', (req, res) => {
+    // Force Cloudflare and mobile browsers to NEVER cache this feed
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+
     // We still allow a 'limit' query parameter to control how many reels we return at once (default 3).
     const limit = parseInt(req.query.limit) || 3;
     const exclude = req.query.exclude || ''; // Capture the list of IDs from the frontend
