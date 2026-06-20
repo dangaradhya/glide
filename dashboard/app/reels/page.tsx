@@ -59,7 +59,7 @@ function ReelsContent() {
 
       // Forward targetReelId directly into your server endpoint layout parameters
       const urlParam = targetReelId && reels.length === 0 ? `&reelId=${targetReelId}` : '';
-      const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=3&exclude=${currentIds}${urlParam}`, {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=10&exclude=${currentIds}${urlParam}`, {
         headers
       });
       const data = await res.json();
@@ -240,10 +240,12 @@ function ReelsContent() {
           }
           
           // Always send the play command when isPlaying is true
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
           
         } else {
           // Send PAUSE command to ALL OTHER videos, or if the user manually paused
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
         }
       }
@@ -403,6 +405,9 @@ function ReelsContent() {
     }
   };
 
+  // Pre-calculate active index before mapping to power the Virtualization window
+  const activeIndex = reels.findIndex(r => r.id === activeReelId);
+
   return (
     // bg-gray-100/bg-black switch for the main container
     <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-screen overflow-hidden flex flex-col transition-colors duration-300">
@@ -456,7 +461,8 @@ function ReelsContent() {
         /* The Scroll Snapping Container */
         // Removing pb-20 on mobile so the video stays entirely full screen edge-to-edge
         <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
-          {reels.map((reel) => (
+          {/* Updated map to include the `index` parameter for the virtualization math */}
+          {reels.map((reel, index) => (
             // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
             // Added `snap-always` to completely block the user from over-swiping multiple videos at once
             <div 
@@ -471,19 +477,33 @@ function ReelsContent() {
                 
                 {/* The Scale Trick Wrapper */}
                 <div className="absolute top-1/2 left-1/2 w-[120%] h-[120%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                  {/* Added &autoplay=1 to the URL to aggressively bypass YouTube's paused state when loading */}
-                  <iframe
-                    id={`reel-player-${reel.id}`}
-                    className="w-full h-full pointer-events-none" 
-                    src={`https://www.youtube.com/embed/${reel.video_id}?enablejsapi=1&autoplay=1&controls=0&rel=0&modestbranding=1&loop=1&playlist=${reel.video_id}&playsinline=1&iv_load_policy=3&disablekb=1`}
-                    title={reel.title}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  ></iframe>
+                  {/* Render Window Virtualization! 
+                      We ONLY mount the heavy YouTube iframe if it is the currently active video, 
+                      or the one immediately next/previous to it (index <= 1 on initial load). 
+                      The rest stay completely unloaded until you scroll near them, instantly fixing the network bottleneck! */}
+                  {(activeIndex === -1 ? index <= 1 : Math.abs(index - activeIndex) <= 1) && (
+                    <iframe
+                      id={`reel-player-${reel.id}`}
+                      className="w-full h-full pointer-events-none" 
+                      src={`https://www.youtube.com/embed/${reel.video_id}?enablejsapi=1&autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&disablekb=1`}
+                      title={reel.title}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      loading="lazy" // Added native lazy loading as a secondary optimization
+                      onLoad={(e) => {
+                        if (activeReelId === reel.id && isPlaying) {
+                          const iframeNode = e.target as HTMLIFrameElement;
+                          iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                          iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                        }
+                      }}
+                    ></iframe>
+                  )}
                 </div>
 
-                {/* Dropped the delay and duration from 600/700ms down to 300ms. 
-                    This makes the thumbnail disappear much faster, totally eliminating the visual lag when you pause/play the reel! */}
+                {/* The Magic Fade Delay! This div covers the iframe with the video's thumbnail. 
+                    Added `delay-[300ms]` to the fade-out. When the user swipes to a reel, the thumbnail stays visible for 0.3 seconds 
+                    while the YouTube iframe buffers and triggers 'play' in the background. */}
                 <div className={`absolute inset-0 z-10 transition-opacity duration-300 pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[300ms]' : 'opacity-100 delay-0'}`}>
                   <img 
                     src={`https://i.ytimg.com/vi/${reel.video_id}/hqdefault.jpg`} 
@@ -497,7 +517,19 @@ function ReelsContent() {
                   className="absolute inset-0 z-20 cursor-pointer"
                   onClick={() => {
                     if (activeReelId === reel.id) {
-                      setIsPlaying(!isPlaying);
+                      const nextIsPlaying = !isPlaying;
+                      setIsPlaying(nextIsPlaying);
+                      
+                      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
+                      if (iframe && iframe.contentWindow) {
+                        if (nextIsPlaying) {
+                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                        } else {
+                          // Force a quick play then pause to clear YouTube's native 'Ended' screen, allowing our Play button to restart the reel natively.
+                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
+                        }
+                      }
                     }
                   }}
                 >
