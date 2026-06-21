@@ -210,6 +210,22 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
             else console.log('Comments table ready.');
         });
 
+        // COMMENTS FOR REELS
+        db.run(`
+            CREATE TABLE IF NOT EXISTS reel_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reel_id INTEGER,
+                user_id INTEGER,
+                text TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(reel_id) REFERENCES reels(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        `, (err) => {
+            if (err) console.error('Error creating reel_comments table:', err.message);
+            else console.log('Reel Comments table ready.');
+        });
+
         // Create the FTS5 Virtual Table for Global Search
         db.run(`
             CREATE VIRTUAL TABLE IF NOT EXISTS global_search USING fts5(
@@ -691,6 +707,109 @@ app.delete('/api/comments/:id', authenticateToken, (req, res) => {
     });
 });
 
+// REEL COMMENTS ROUTES
+// These 4 endpoints duplicate the exact secure logic of Post Comments, mapped to the reel_comments table.
+
+// GET comments for a reel
+app.get('/api/reels/:id/comments', (req, res) => {
+    // We join the users table so we can display their Google avatar and name next to their comment!
+    const reelId = req.params.id;
+    const sql = `
+        SELECT reel_comments.*, users.name, users.picture 
+        FROM reel_comments 
+        JOIN users ON reel_comments.user_id = users.id 
+        WHERE reel_id = ? 
+        ORDER BY timestamp ASC
+    `;
+    db.all(sql, [reelId], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error fetching reel comments' });
+        res.status(200).json(rows);
+    });
+});
+
+// POST a new comment on a reel
+app.post('/api/reels/:id/comments', authenticateToken, (req, res) => {
+    // When a user submits a comment on a reel, the frontend will send a POST request to this endpoint with the comment text.
+    const reelId = req.params.id;
+    const userId = req.user.userId;
+    const { text } = req.body;
+
+    if (!text || text.trim() === '') return res.status(400).json({ error: 'Comment cannot be empty' });
+
+    // We insert the new comment into the reel_comments table, associating it with the reel ID and user ID. After inserting, we immediately
+    // fetch the newly created comment along with the user's name and picture so we can return it in the response.
+    const sql = `INSERT INTO reel_comments (reel_id, user_id, text) VALUES (?, ?, ?)`;
+    db.run(sql, [reelId, userId, text], function(err) {
+        if (err) return res.status(500).json({ error: 'Failed to post reel comment' });
+        
+        // Immediately fetch the newly created comment with the user's data so the frontend can append it instantly
+        db.get(`
+            SELECT reel_comments.*, users.name, users.picture 
+            FROM reel_comments 
+            JOIN users ON reel_comments.user_id = users.id 
+            WHERE reel_comments.id = ?
+        `, [this.lastID], (fetchErr, row) => {
+            if (fetchErr) return res.status(500).json({ error: 'Failed to retrieve new reel comment' });
+            res.status(201).json(row);
+        });
+    });
+});
+
+// Securely Edit a Reel Comment (15 Minute Window)
+app.put('/api/reel_comments/:id', authenticateToken, (req, res) => {
+    const commentId = req.params.id;
+    const userId = req.user.userId;
+    const { text } = req.body;
+
+    if (!text || text.trim() === '') return res.status(400).json({ error: 'Comment cannot be empty' });
+
+    // First, we fetch the comment to check ownership and timestamp
+    // We ensure that the user trying to edit the comment is the original author and that they are within the 15-minute window for edits.
+    db.get(`SELECT * FROM reel_comments WHERE id = ?`, [commentId], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Comment not found' });
+        if (row.user_id !== userId) return res.status(403).json({ error: 'Unauthorized to edit this comment' });
+
+        // SQLite stores CURRENT_TIMESTAMP in UTC. We append 'Z' to ensure JS parses it correctly.
+        // We calculate how many minutes have passed since the comment was posted. If it's more than 15, we deny the edit.
+        const commentTime = new Date(row.timestamp + 'Z').getTime();
+        if ((Date.now() - commentTime) / (1000 * 60) > 15) {
+            return res.status(403).json({ error: 'The 15-minute edit window has expired.' });
+        }
+
+        // If both checks pass, we allow the update to proceed. We use a parameterized query to safely update the comment text.
+        db.run(`UPDATE reel_comments SET text = ? WHERE id = ?`, [text, commentId], function(updateErr) {
+            if (updateErr) return res.status(500).json({ error: 'Failed to update comment' });
+            res.status(200).json({ success: true, text });
+        });
+    });
+});
+
+// Securely Delete a Reel Comment (15 Minute Window)
+app.delete('/api/reel_comments/:id', authenticateToken, (req, res) => {
+    const commentId = req.params.id;
+    const userId = req.user.userId;
+
+    // Similar to the edit route, we first check if the comment exists and if the requesting user is the author. Then we check if it's 
+    // still within the allowed deletion time frame before allowing the delete operation.
+    db.get(`SELECT * FROM reel_comments WHERE id = ?`, [commentId], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Comment not found' });
+        if (row.user_id !== userId) return res.status(403).json({ error: 'Unauthorized to delete this comment' });
+
+        // SQLite stores CURRENT_TIMESTAMP in UTC. We append 'Z' to ensure JS parses it correctly. We calculate how many minutes 
+        // have passed since the comment was posted. If it's more than 15, we deny the deletion.
+        const commentTime = new Date(row.timestamp + 'Z').getTime();
+        if ((Date.now() - commentTime) / (1000 * 60) > 15) {
+            return res.status(403).json({ error: 'The 15-minute deletion window has expired.' });
+        }
+
+        // If both checks pass, we allow the delete to proceed. We use a parameterized query to safely delete the comment.
+        db.run(`DELETE FROM reel_comments WHERE id = ?`, [commentId], function(delErr) {
+            if (delErr) return res.status(500).json({ error: 'Failed to delete comment' });
+            res.status(200).json({ success: true, reelId: row.reel_id });
+        });
+    });
+});
+
 
 // 12. REELS ROUTES (Videos)
 
@@ -756,14 +875,17 @@ app.get('/api/reels', (req, res) => {
         } catch (err) {}
     }
 
+    // Added the subquery `(SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount` to both branches
     // Dynamic SQL builder - if we have a userId, we include the subquery to check if they've liked each reel.
     //  If not, we just return 0 for userLiked. We do the same for userSaved as well
     let sql = userId
         ? `SELECT reels.*, 
            EXISTS(SELECT 1 FROM reel_likes WHERE reel_id = reels.id AND user_id = ?) AS userLiked,
-           EXISTS(SELECT 1 FROM saved_reels WHERE reel_id = reels.id AND user_id = ?) AS userSaved
+           EXISTS(SELECT 1 FROM saved_reels WHERE reel_id = reels.id AND user_id = ?) AS userSaved,
+           (SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount
            FROM reels`
-        : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved
+        : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved,
+           (SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount
            FROM reels`;
     
     // The 'exclude' parameter allows the frontend to tell us which reels it has already displayed, 
@@ -831,13 +953,14 @@ app.get('/api/reels', (req, res) => {
         // If we forced a single specific video, immediately run a background fallback query 
         // to grab normal random items, so the layout feed isn't an empty dead-end string.
         if (forceId && formattedRows.length > 0) {
-            // Added the 7-day rule to the fallback query so the feed stays fresh after viewing a vaulted reel!
+            // Updated fallback query to also pull commentCount
             let fallbackSql = userId
                 ? `SELECT reels.*, 
                    EXISTS(SELECT 1 FROM reel_likes WHERE reel_id = reels.id AND user_id = ?) AS userLiked,
-                   EXISTS(SELECT 1 FROM saved_reels WHERE reel_id = reels.id AND user_id = ?) AS userSaved
+                   EXISTS(SELECT 1 FROM saved_reels WHERE reel_id = reels.id AND user_id = ?) AS userSaved,
+                   (SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount
                    FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-7 days') ORDER BY RANDOM() LIMIT ?`
-                : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-7 days') ORDER BY RANDOM() LIMIT ?`;
+                : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved, (SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-7 days') ORDER BY RANDOM() LIMIT ?`;
 
             let fallbackParams = userId ? [userId, userId, forceId, limit] : [forceId, limit];
             
@@ -870,6 +993,7 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     // Define our 5 targeted SQL queries
+    // Added a 6th query to grab reel comments for the vault!
     const queries = {
         likedPosts: `SELECT posts.*, 1 AS userLiked FROM posts 
                      INNER JOIN post_likes ON posts.id = post_likes.post_id 
@@ -889,7 +1013,11 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
                      
         userComments: `SELECT comments.*, posts.headline AS post_headline
                        FROM comments INNER JOIN posts ON comments.post_id = posts.id 
-                       WHERE comments.user_id = ? ORDER BY comments.timestamp DESC`
+                       WHERE comments.user_id = ? ORDER BY comments.timestamp DESC`,
+
+        userReelComments: `SELECT reel_comments.*, reels.title AS reel_title
+                       FROM reel_comments INNER JOIN reels ON reel_comments.reel_id = reels.id 
+                       WHERE reel_comments.user_id = ? ORDER BY reel_comments.timestamp DESC`
     };
 
     // Helper function to wrap SQLite callbacks in modern Promises
@@ -911,12 +1039,13 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
     try {
         // Execute all database queries at the exact same time
         // Promise.all takes an array of Promises and returns a new Promise that resolves when all of the input Promises have resolved.
-        const [likedPosts, savedPosts, likedReels, savedReels, userComments] = await Promise.all([
+        const [likedPosts, savedPosts, likedReels, savedReels, userComments, userReelComments] = await Promise.all([
             fetchQuery(queries.likedPosts, [userId]),
             fetchQuery(queries.savedPosts, [userId]),
             fetchQuery(queries.likedReels, [userId]),
             fetchQuery(queries.savedReels, [userId]),
-            fetchQuery(queries.userComments, [userId]) 
+            fetchQuery(queries.userComments, [userId]),
+            fetchQuery(queries.userReelComments, [userId]) 
         ]);
 
         // Send a massive, beautifully organized JSON payload back to the frontend
@@ -925,7 +1054,8 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
             savedPosts,
             likedReels,
             savedReels,
-            userComments 
+            userComments,
+            userReelComments 
         });
     } catch (error) {
         console.error("Vault fetch error:", error);
@@ -1005,7 +1135,9 @@ const cleanOldData = () => {
     db.serialize(() => {
         // Define the exact exclusion rules (Approach A). Keep items if liked, saved, or commented!
         const deadPosts = `timestamp <= datetime('now', '-7 days') AND id NOT IN (SELECT post_id FROM saved_posts) AND id NOT IN (SELECT post_id FROM post_likes) AND id NOT IN (SELECT post_id FROM comments)`;
-        const deadReels = `timestamp <= datetime('now', '-7 days') AND id NOT IN (SELECT reel_id FROM saved_reels) AND id NOT IN (SELECT reel_id FROM reel_likes)`;
+        
+        // Updated deadReels to ensure reels aren't deleted if they have comments
+        const deadReels = `timestamp <= datetime('now', '-7 days') AND id NOT IN (SELECT reel_id FROM saved_reels) AND id NOT IN (SELECT reel_id FROM reel_likes) AND id NOT IN (SELECT reel_id FROM reel_comments)`;
 
         // Remove old entries from the FTS5 global_search index ONLY for truly dead items
         db.run(`DELETE FROM global_search WHERE doc_type = 'POST' AND doc_id IN (SELECT id FROM posts WHERE ${deadPosts})`);

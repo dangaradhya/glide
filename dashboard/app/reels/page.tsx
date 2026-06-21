@@ -42,9 +42,39 @@ function ReelsContent() {
   // State for the "Copied!" tooltip when sharing
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
+  // States for the sliding Comment Drawer (Identical to the Posts feed logic)
+  const [isCommentDrawerOpen, setIsCommentDrawerOpen] = useState(false);
+  const [activeReel, setActiveReel] = useState<any>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // States for Editing/Deleting comments
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editCommentText, setEditCommentText] = useState("");
+
   // Extract the reelId from the URL query parameters to allow deep linking to specific reels
   const searchParams = useSearchParams();
   const targetReelId = searchParams.get('reelId');
+
+  // Decode JWT to track the logged-in user for comment ownership permissions
+  // On component mount, we check localStorage for the presence of a JWT token to determine if the user is authenticated.
+  useEffect(() => {
+    const token = localStorage.getItem('glide_token');
+    if (token) {
+      setIsAuthenticated(true);
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setCurrentUserId(payload.userId);
+      } catch (e) {
+        console.error("Failed to parse token payload");
+      }
+    } else {
+      setIsAuthenticated(false);
+    }
+  }, []);
 
   // 3. DATA FETCHING FUNCTION
   const fetchReels = async () => {
@@ -411,6 +441,126 @@ function ReelsContent() {
     }
   };
 
+  // The Logic for fetching and submitting comments from the drawer
+  const openCommentDrawer = async (reel: any) => {
+    setActiveReel(reel);
+    setIsCommentDrawerOpen(true);
+    setCommentsLoading(true);
+
+    // Fetch comments for this reel from the backend
+    try {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${reel.id}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data);
+      }
+    } catch (err) {
+      console.error("Error fetching comments:", err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  // The function to submit a new comment to the reel
+  // We first check if the comment text is not empty and if there is an active reel. We also check for user authentication by looking for 
+  // a token in localStorage. If the user is not authenticated, we alert them to log in.
+  const submitComment = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!newCommentText.trim() || !activeReel) return;
+
+    const token = localStorage.getItem('glide_token');
+    if (!token) return alert("Please log in to comment.");
+
+    // OPTIMISTIC UI UPDATE: We immediately add the new comment to the comments state to reflect it in the UI for instant feedback.
+    try {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${activeReel.id}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ text: newCommentText })
+      });
+
+      if (res.ok) {
+        const newCommentObj = await res.json();
+        // Instantly push the new comment to the drawer UI
+        setComments(prev => [...prev, newCommentObj]);
+        setNewCommentText("");
+        
+        // Optimistically increment the comment counter on the main feed
+        setReels(currentReels => currentReels.map(r => 
+          r.id === activeReel.id ? { ...r, commentCount: (r.commentCount || 0) + 1 } : r
+        ));
+      } else {
+        alert("Failed to post comment.");
+      }
+    } catch (err) {
+      console.error("Error submitting comment:", err);
+    }
+  };
+
+  // Handlers for Editing and Deleting Reel Comments
+  // The handleEditSubmit function sends a PUT request to the backend to update the comment text. It first checks 
+  // if the edited text is not empty, then it sends the request with the new text. If the update is successful, 
+  // it updates the comments state to reflect the change in the UI and closes the edit mode. If there is an error, it alerts the user.
+  const handleEditSubmit = async (commentId: number) => {
+    if (!editCommentText.trim()) return;
+    const token = localStorage.getItem('glide_token');
+    
+    // We send a PUT request to the backend with the updated comment text. If the response is successful, we update the comments 
+    // state by mapping through the current comments and replacing the edited comment with the new text. We then exit edit mode 
+    // by setting editingCommentId to null. If there is an error during the fetch request, we catch it and log it to the console.
+    try {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reel_comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ text: editCommentText })
+      });
+
+      if (res.ok) {
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, text: editCommentText } : c));
+        setEditingCommentId(null);
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Failed to update comment.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // The handleDeleteComment function sends a DELETE request to the backend to remove a comment. It first confirms with the user 
+  // if they want to delete the comment. If they confirm, it sends the DELETE request. If the deletion is successful, it updates 
+  // the comments state to remove the deleted comment and decrements the comment count on the main feed. If there is an error, it alerts the user.
+  const handleDeleteComment = async (commentId: number) => {
+    if (!confirm("Are you sure you want to delete this take?")) return;
+    const token = localStorage.getItem('glide_token');
+
+    // We send a DELETE request to the backend to remove the comment. If the response is successful, we update the comments state by filtering out
+    // the deleted comment. We also update the reels state to decrement the comment count for the active reel. If there is an error during the fetch 
+    // request, we catch it and log it to the console.
+    try {
+      const res = await fetch(`https://glide-sports.onrender.com/api/reel_comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      // If the deletion is successful, we remove the comment from the comments state and decrement the comment count on the main feed for the active reel.
+      if (res.ok) {
+        setComments(prev => prev.filter(c => c.id !== commentId));
+        setReels(currentReels => currentReels.map(r => 
+          r.id === activeReel.id ? { ...r, commentCount: Math.max(0, (r.commentCount || 1) - 1) } : r
+        ));
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Failed to delete comment.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Pre-calculate active index before mapping to power the Virtualization window
   const activeIndex = reels.findIndex(r => r.id === activeReelId);
 
@@ -574,20 +724,18 @@ function ReelsContent() {
                   )}
                 </div>
 
-                {/* Right-Side Action Bar (Like & Share) */}
-                {/* Moved buttons slightly higher (bottom-28) on mobile to clear the new bottom navigation bar */}
-                <div className="absolute right-4 bottom-28 md:bottom-24 flex flex-col items-center space-y-6 z-40 pointer-events-auto">
+                {/* Right-Side Action Bar (Like, Comment, and Share) */}
+                <div className="absolute right-4 bottom-28 md:bottom-24 flex flex-col items-center space-y-4 z-40 pointer-events-auto">
                   
                   {/* Like Button */}
                   <button 
                     onClick={() => handleLike(reel.id)} 
                     className="flex flex-col items-center group transition-transform active:scale-90"
                   >
-                    {/* The buttons over the video stay dark-themed intentionally to remain visible over bright videos */}
-                    <div className="bg-black/40 p-3 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
                       <svg 
                         xmlns="http://www.w3.org/2000/svg" 
-                        className={`w-7 h-7 transition-colors ${reel.userLiked ? 'text-red-500' : 'text-white'}`} 
+                        className={`w-6 h-6 transition-colors ${reel.userLiked ? 'text-red-500' : 'text-white'}`} 
                         fill={reel.userLiked ? "currentColor" : "none"} 
                         viewBox="0 0 24 24" 
                         stroke="currentColor" 
@@ -599,16 +747,31 @@ function ReelsContent() {
                     <span className="text-white text-xs font-semibold drop-shadow-md">{reel.likes || 0}</span>
                   </button>
 
+                  {/* Comment Button */}
+                  <button 
+                    onClick={() => openCommentDrawer(reel)}
+                    className="flex flex-col items-center group transition-transform active:scale-90"
+                    title="View Discussion"
+                  >
+                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                    </div>
+                    {/* Render the comment count directly from the subquery data */}
+                    <span className="text-white text-xs font-semibold drop-shadow-md">{reel.commentCount || 0}</span>
+                  </button>
+
                   {/* Bookmark Button */}
                   <button 
                     onClick={() => handleSave(reel.id)} 
                     className="flex flex-col items-center group transition-transform active:scale-90"
                     title="Save this reel"
                   >
-                    <div className="bg-black/40 p-3 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
                       <svg 
                         xmlns="http://www.w3.org/2000/svg" 
-                        className={`w-7 h-7 transition-colors ${reel.userSaved ? 'text-blue-500' : 'text-white'}`} 
+                        className={`w-6 h-6 transition-colors ${reel.userSaved ? 'text-blue-500' : 'text-white'}`} 
                         fill={reel.userSaved ? "currentColor" : "none"} 
                         viewBox="0 0 24 24" 
                         stroke="currentColor" 
@@ -624,8 +787,8 @@ function ReelsContent() {
                     onClick={() => handleShare(reel.id, reel.video_id, reel.title)} 
                     className="flex flex-col items-center group relative transition-transform active:scale-90"
                   >
-                    <div className="bg-black/40 p-3 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                       </svg>
                     </div>
@@ -664,6 +827,154 @@ function ReelsContent() {
           )}
         </div>
       )}
+
+      {/* The Sliding Comment Drawer for Reels */}
+      {/* Background Overlay */}
+      {isCommentDrawerOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-70 transition-opacity" 
+          onClick={() => setIsCommentDrawerOpen(false)}
+        />
+      )}
+
+      {/* The Drawer Panel */}
+      <div 
+        className={`fixed top-0 right-0 h-full w-full sm:w-[400px] bg-white dark:bg-gray-900 shadow-2xl z-70 transform transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200 dark:border-gray-800 ${
+          isCommentDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Drawer Header */}
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-950/50">
+          <h2 className="text-lg font-bold">Comments</h2>
+          <button 
+            onClick={() => setIsCommentDrawerOpen(false)} 
+            className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Post Context Banner (Mapped to activeReel.title) */}
+        {activeReel && (
+          <div className="p-4 bg-purple-50 dark:bg-purple-900/10 border-b border-gray-200 dark:border-gray-800">
+            <p className="text-xs text-purple-600 dark:text-purple-400 font-bold uppercase mb-1">Discussing Highlight</p>
+            <p className="text-sm font-semibold line-clamp-2">{activeReel.title}</p>
+          </div>
+        )}
+
+        {/* Comment Thread Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {commentsLoading ? (
+            <div className="flex justify-center mt-10">
+              <div className="w-6 h-6 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : comments.length === 0 ? (
+            <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
+              <p>No takes on this yet.</p>
+              <p className="text-sm mt-1">Be the first to drop a comment!</p>
+            </div>
+          ) : (
+            comments.map(comment => {
+              // Check if this comment belongs to the logged-in user
+              const isOwner = comment.user_id === currentUserId;
+              
+              // Calculate if it was posted less than 15 minutes ago (remembering DB is UTC)
+              const commentTime = new Date(comment.timestamp + 'Z').getTime();
+              const timeElapsedMinutes = (Date.now() - commentTime) / (1000 * 60);
+              const isWithinEditWindow = timeElapsedMinutes <= 15;
+  
+              return (
+                <div key={comment.id} className="flex space-x-3 group">
+                  <img 
+                    src={comment.picture || 'https://via.placeholder.com/40'} 
+                    alt={comment.name} 
+                    className="w-8 h-8 rounded-full shadow-sm mt-1" 
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-bold text-sm">{comment.name}</span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(comment.timestamp + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    
+                    {editingCommentId === comment.id ? (
+                      <div className="mt-2 flex flex-col space-y-2">
+                        <input 
+                          type="text" 
+                          value={editCommentText}
+                          onChange={(e) => setEditCommentText(e.target.value)}
+                          className="bg-gray-100 dark:bg-gray-800 border-none rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none w-full"
+                          autoFocus
+                        />
+                        <div className="flex space-x-2">
+                          <button onClick={() => handleEditSubmit(comment.id)} className="text-xs bg-purple-600 text-white px-3 py-1 rounded">Save</button>
+                          <button onClick={() => setEditingCommentId(null)} className="text-xs bg-gray-300 dark:bg-gray-700 px-3 py-1 rounded text-gray-800 dark:text-gray-200">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-start">
+                        <p className="text-sm mt-1 text-gray-800 dark:text-gray-200 break-words bg-gray-100 dark:bg-gray-800 p-3 rounded-xl rounded-tl-none inline-block">
+                          {comment.text}
+                        </p>
+                        
+                        {/* Action buttons (Only show if owner AND within 15 minutes) */}
+                        {isOwner && isWithinEditWindow && (
+                          <div className="flex space-x-3 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.text); }}
+                              className="text-[11px] font-semibold text-gray-500 hover:text-purple-500"
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteComment(comment.id)}
+                              className="text-[11px] font-semibold text-gray-500 hover:text-red-500"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Comment Input Footer */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+          {!isAuthenticated ? (
+            <div className="text-center p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Sign in to join the conversation.</p>
+            </div>
+          ) : (
+            <form onSubmit={submitComment} className="flex items-center space-x-2">
+              <input 
+                type="text" 
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                placeholder="Drop a take..."
+                className="flex-1 bg-gray-100 dark:bg-gray-800 border-none rounded-full px-4 py-2.5 focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+              />
+              <button 
+                type="submit" 
+                disabled={!newCommentText.trim()}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-full p-2.5 transition-colors shadow-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
 
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
       {/* On reels, this bar overlays the video slightly with a sleek gradient, matching the TikTok/Instagram aesthetic */}
