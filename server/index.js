@@ -36,7 +36,8 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // Secure CORS policy restricting access to specific frontend domains
 const allowedOrigins = [
     'http://localhost:3000',          // Local development
-    'https://glide-green.vercel.app', // Your live web app
+    'https://glidesports.app',        // Live web app
+    'https://www.glidesports.app',    // Backup redirect
     'capacitor://localhost',          // iOS native app
     'https://localhost',              // Android native app (Secure default)
     'http://localhost'                // Android native app (Legacy backup)
