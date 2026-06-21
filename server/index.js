@@ -441,12 +441,12 @@ app.get('/api/posts', (req, res) => {
              EXISTS(SELECT 1 FROM saved_posts WHERE post_id = posts.id AND user_id = ?) AS userSaved,
              (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
            FROM posts 
-           WHERE timestamp >= datetime('now', '-7 days') 
+           WHERE timestamp >= datetime('now', '-2 minutes') 
            ORDER BY timestamp DESC LIMIT ? OFFSET ?`
         : `SELECT posts.*, 0 AS userLiked, 0 AS userSaved,
              (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount 
            FROM posts 
-           WHERE timestamp >= datetime('now', '-7 days') 
+           WHERE timestamp >= datetime('now', '-2 minutes') 
            ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
 
     // The parameters we pass to the database depend on whether we have a userId or not. 
@@ -904,7 +904,7 @@ app.get('/api/reels', (req, res) => {
         params.push(forceId);
     } else {
         // Ensures the main random feed ONLY pulls fresh reels from the last 7 days.
-        whereClauses.push(`timestamp >= datetime('now', '-7 days')`);
+        whereClauses.push(`timestamp >= datetime('now', '-2 minutes')`);
 
         // Convert the string "1,4,7" into an array of integers [1, 4, 7]
         // We also filter out any non-numeric values just in case the frontend sends something unexpected.
@@ -959,8 +959,8 @@ app.get('/api/reels', (req, res) => {
                    EXISTS(SELECT 1 FROM reel_likes WHERE reel_id = reels.id AND user_id = ?) AS userLiked,
                    EXISTS(SELECT 1 FROM saved_reels WHERE reel_id = reels.id AND user_id = ?) AS userSaved,
                    (SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount
-                   FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-7 days') ORDER BY RANDOM() LIMIT ?`
-                : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved, (SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-7 days') ORDER BY RANDOM() LIMIT ?`;
+                   FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-2 minutes') ORDER BY RANDOM() LIMIT ?`
+                : `SELECT reels.*, 0 AS userLiked, 0 AS userSaved, (SELECT COUNT(*) FROM reel_comments WHERE reel_id = reels.id) AS commentCount FROM reels WHERE video_id != ? AND timestamp >= datetime('now', '-2 minutes') ORDER BY RANDOM() LIMIT ?`;
 
             let fallbackParams = userId ? [userId, userId, forceId, limit] : [forceId, limit];
             
@@ -1143,7 +1143,7 @@ const cleanOldData = () => {
         db.run(`DELETE FROM global_search WHERE doc_type = 'POST' AND doc_id IN (SELECT id FROM posts WHERE ${deadPosts})`);
         db.run(`DELETE FROM global_search WHERE doc_type = 'REEL' AND doc_id IN (SELECT id FROM reels WHERE ${deadReels})`);
         
-        // Removed the blind deletion of junction data (likes, saves, comments). 
+        // HIGHLIGHT: Removed the blind deletion of junction data (likes, saves, comments). 
         // We WANT to keep those if they exist! The query will now gracefully leave them alone.
 
         // Finally, delete the actual posts and reels that are officially dead
