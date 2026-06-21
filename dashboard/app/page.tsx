@@ -137,7 +137,7 @@ export default function Home() {
   }, [posts, autoScrollTarget, hasMore, loadingMore, loading]);
 
   // Deep Link Navigation Watcher for Posts (Runs once on app boot)
-  // If a user clicks a shared link (e.g., https://glide-green.vercel.app/#post-133), 
+  // If a user clicks a shared link (e.g., https://glidesports.app/#post-133), 
   // this grabs the '133' and fires up your Auto-Seek engine automatically!
   useEffect(() => {
     const hash = window.location.hash;
@@ -354,7 +354,7 @@ export default function Home() {
   // Ensure the signature is EXACTLY (id, headline) - DO NOT pass url here!
   const handleShare = async (id: number, headline: string) => {
     // Generate the deep link to this exact post on your live Vercel domain
-    const deepLink = `https://glide-green.vercel.app/#post-${id}`;
+    const deepLink = `https://glidesports.app/#post-${id}`;
 
     try {
       // Trigger the native Android share sheet
