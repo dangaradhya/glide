@@ -52,7 +52,16 @@ export default function ProfileVault() {
 
         if (res.ok) {
           const data = await res.json();
-          setVault(data);
+          
+          // Merge Post Comments and Reel Comments into a single unified array, 
+          // then sort them in descending order (newest first) using their UTC timestamps.
+          const combinedComments = [...(data.userComments || []), ...(data.userReelComments || [])]
+            .sort((a, b) => new Date(b.timestamp + 'Z').getTime() - new Date(a.timestamp + 'Z').getTime());
+
+          setVault({
+            ...data,
+            userComments: combinedComments 
+          });
         } else if (res.status === 401 || res.status === 403) {
             localStorage.removeItem('glide_token');
             localStorage.removeItem('glide_user');
@@ -187,12 +196,12 @@ export default function ProfileVault() {
                     </Link>
                     )}
 
-                    {/* HIGHLIGHT: Render the Custom Comment Layout */}
-                    {item.text && item.post_headline && (
+                    {/* Render the Unified Comment Layout handling both Posts and Reels */}
+                    {item.text && (item.post_headline || item.reel_title) && (
                       <>
                         <div className="flex justify-between items-center mb-4">
-                          <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-[10px] font-bold px-2.5 py-0.5 rounded uppercase tracking-widest">
-                            Comment
+                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded uppercase tracking-widest ${item.reel_title ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'}`}>
+                            {item.reel_title ? 'Reel Comment' : 'Post Comment'}
                           </span>
                           <span className="text-gray-400 dark:text-gray-500 text-xs">
                             {new Date(item.timestamp + 'Z').toLocaleDateString()}
@@ -211,9 +220,11 @@ export default function ProfileVault() {
 
                         {/* The Context of what they commented on */}
                         <div className="mt-auto border-t border-gray-100 dark:border-gray-800 pt-3">
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase tracking-wider">On Post:</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase tracking-wider">
+                            On {item.reel_title ? 'Highlight' : 'Post'}:
+                          </p>
                           <h3 className="text-sm font-bold line-clamp-2 leading-snug text-gray-700 dark:text-gray-300">
-                            {item.post_headline}
+                            {item.post_headline || item.reel_title}
                           </h3>
                         </div>
                       </>
