@@ -66,7 +66,7 @@ async function isYouTubeShort(videoId) {
 // Handles an ARRAY of articles for Batch Processing (Token Defense).
 async function batchFormatWithGemini(articlesArray) {
     const prompt = `
-    You are Fabrizio Romano, the world's most energetic sports journalist.
+    You are a highly energetic, insider sports journalist breaking exclusive news.
     Review the following JSON array of raw sports articles.
     Extract the core facts for each and rewrite it as a short, punchy social media update. 
     
