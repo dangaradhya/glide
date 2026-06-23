@@ -633,11 +633,12 @@ function ReelsContent() {
                 
                 {/* The Scale Trick Wrapper */}
                 <div className="absolute top-1/2 left-1/2 w-[120%] h-[120%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                  {/* Render Window Virtualization! 
-                      We ONLY mount the heavy YouTube iframe if it is the currently active video, 
-                      or the one immediately next/previous to it (index <= 1 on initial load). 
-                      The rest stay completely unloaded until you scroll near them, instantly fixing the network bottleneck! */}
-                  {(activeIndex === -1 ? index <= 1 : Math.abs(index - activeIndex) <= 1) && (
+                  {/* Ultra-Strict Render Window Virtualization! 
+                      We ONLY mount the heavy YouTube iframe if it is the CURRENTLY active video, 
+                      or the NEXT video in line. We aggressively unmount previous videos 
+                      the second they leave the screen to prevent mobile browser memory eviction.
+                  */}
+                  {(index === activeIndex || (activeIndex === -1 && index === 0) || index === activeIndex + 1) && (
                     <iframe
                       id={`reel-player-${reel.id}`}
                       className="w-full h-full pointer-events-none" 
@@ -645,7 +646,7 @@ function ReelsContent() {
                       title={reel.title}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
-                      loading="lazy" // Added native lazy loading as a secondary optimization
+                      loading="lazy" 
                       onLoad={(e) => {
                         if (activeReelId === reel.id && isPlaying) {
                           const iframeNode = e.target as HTMLIFrameElement;
@@ -661,9 +662,9 @@ function ReelsContent() {
                 </div>
 
                 {/* The Magic Fade Delay! This div covers the iframe with the video's thumbnail. 
-                    Added `delay-[300ms]` to the fade-out. When the user swipes to a reel, the thumbnail stays visible for 0.3 seconds 
+                    Added `delay-[200ms]` to the fade-out. When the user swipes to a reel, the thumbnail stays visible for 0.3 seconds 
                     while the YouTube iframe buffers and triggers 'play' in the background. */}
-                <div className={`absolute inset-0 z-10 transition-opacity duration-300 pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[300ms]' : 'opacity-100 delay-0'}`}>
+                <div className={`absolute inset-0 z-10 transition-opacity duration-200 pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[200ms] ease-linear' : 'opacity-100 delay-0'}`}>
                   <img 
                     src={`https://i.ytimg.com/vi/${reel.video_id}/hqdefault.jpg`} 
                     alt={reel.title}
