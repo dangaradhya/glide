@@ -79,12 +79,12 @@ function ReelsContent() {
     }
 
     // Platform Detection Logic
-    // Because the Capacitor web package injects `window.Capacitor` into Safari, 
-    // we MUST strictly check for `.isNative` to confirm it is actually the app shell.
+    // We check if the user is on a mobile OS. 
+    // We expanded the Capacitor check to include the userAgent because the window object injects asynchronously.
     const isMobileOS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isCapacitorApp = !!(window as any).Capacitor?.isNative;
+    const isCapacitor = !!(window as any).Capacitor || /Capacitor/i.test(navigator.userAgent);
     
-    if (isMobileOS && !isCapacitorApp) {
+    if (isMobileOS && !isCapacitor) {
       setIsMobileBrowser(true);
     }
   }, []);
@@ -237,42 +237,36 @@ function ReelsContent() {
   }, [reels]);
 
   // The YouTube API Controller
-  // We replaced the messy setInterval logic with a clean React timeout cascade that automatically cleans up.
+  // Whenever the active reel or the play state changes, we send a message to the iframes.
   useEffect(() => {
-    const pingTimers: NodeJS.Timeout[] = [];
-
+     // We loop through all the reels and get their corresponding iframes by ID. If the iframe 
+    // exists and has a contentWindow, we check if this reel is the active one and if it should be playing. 
+    // If it is the active reel and should be playing, we send a postMessage to the iframe to play the video. 
+    // For all other reels (or if the user has manually paused), we send a postMessage to pause the video. 
+    // This ensures that only the video currently in view plays, while all others are paused, creating a 
+    // seamless viewing experience as the user scrolls through the reels.
     reels.forEach((reel) => {
       const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
       
-      // If the iframe exists and has a contentWindow, we can send postMessage commands to control the YouTube player.
+      // If the iframe exists and has a contentWindow (i.e., it's loaded), we check if this reel is the active one and if it should be playing.
       if (iframe && iframe.contentWindow) {
         if (reel.id === activeReelId && isPlaying) {
           
-          // We only seek to the start of the video if this is a new active reel that hasn't been played yet.
+          // Check if this is a NEW video snapping into view
           if (lastPlayedIdRef.current !== activeReelId) {
-            // We seek to the start of the video only on desktop browsers. Mobile browsers often have strict autoplay policies that can interfere with seeking.
+             // Conditional seekTo. We strictly DO NOT send seekTo(0) if on a mobile browser. 
+             // Because the mobile iframe is destroyed and rebuilt, it naturally starts at 0. Forcing seekTo(0) crashes the cold-booting player.
              if (!isMobileBrowser) {
                iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
              }
              lastPlayedIdRef.current = activeReelId;
           }
           
-          // We send the UNMUTE command only if the global mute state is false. This allows users to control whether they want to hear audio or not.
+          // Unmute ONLY if the user has globally satisfied the browser interaction policy
           if (!isGlobalMuted) {
             iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
           }
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-          
-          // The Clean "Shadow Ping"
-          // Safari puts off-screen iframes into cryo-sleep. We fire two delayed backup commands.
-          // Because we push them into `pingTimers`, React automatically cancels them if the user scrolls away, 
-          // completely eliminating the race conditions you hated about the old interval method!
-          [200, 500].forEach(delay => {
-             const timer = setTimeout(() => {
-                iframe.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-             }, delay);
-             pingTimers.push(timer);
-          });
           
         } else {
           // Send PAUSE command to ALL OTHER videos, or if the user manually paused
@@ -281,12 +275,8 @@ function ReelsContent() {
         }
       }
     });
-
-    // The Cleanup Phase. Instantly kills pending shadow pings when activeReelId changes.
-    return () => {
-      pingTimers.forEach(clearTimeout);
-    };
-  }, [activeReelId, isPlaying, isGlobalMuted, isMobileBrowser]);
+  // Added isMobileBrowser to the dependency array to ensure the conditional logic has the latest state.
+  }, [activeReelId, isPlaying, isGlobalMuted, reels, isMobileBrowser]);
 
   // The Infinite Scroll Observer
   useEffect(() => {
@@ -593,7 +583,7 @@ function ReelsContent() {
 
   return (
     // bg-gray-100/bg-black switch for the main container
-    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col transition-colors duration-300">
+    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-screen overflow-hidden flex flex-col transition-colors duration-300">
       
       {/* Responsive Header Container for Reels */}
       <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-black/60 to-transparent pointer-events-none transition-all">
@@ -653,7 +643,7 @@ function ReelsContent() {
               data-id={reel.id} // Used by the Intersection Observer
               data-video-id={reel.video_id}
               // Added `will-change-transform` and inline hardware acceleration to offload layout painting to the GPU, removing scroll friction.
-              className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
+              className="reel-container h-screen w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
               style={{ transform: 'translateZ(0)' }}
             >
               {/* The Video Container */}
@@ -677,6 +667,20 @@ function ReelsContent() {
                       title={reel.title}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
+                      // Removed loading="lazy". We want the browser to eagerly load this iframe in the background since our virtualization already protects memory limits.
+                      onLoad={(e) => {
+                        if (activeReelId === reel.id && isPlaying) {
+                          const iframeNode = e.target as HTMLIFrameElement;
+                          // Ensure initial load respects the global interaction state
+                          if (!isGlobalMuted) {
+                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                          }
+                          // Added a small safety delay so the play command never hits a YouTube player before it is fully ready, preventing infinite loading spinners.
+                          setTimeout(() => {
+                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          }, 50);
+                        }
+                      }}
                     ></iframe>
                   )}
                 </div>
@@ -708,12 +712,11 @@ function ReelsContent() {
                   onClick={() => {
                     if (activeReelId === reel.id) {
                       
-                      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
-                      
                       // The crucial fix! If the browser is currently muting the feed,
                       // the first tap will UNMUTE it without pausing the video. 
                       if (isGlobalMuted) {
                         setIsGlobalMuted(false);
+                        const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
                         if (iframe && iframe.contentWindow) {
                           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
                         }
@@ -724,6 +727,7 @@ function ReelsContent() {
                       const nextIsPlaying = !isPlaying;
                       setIsPlaying(nextIsPlaying);
                       
+                      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
                       if (iframe && iframe.contentWindow) {
                         if (nextIsPlaying) {
                           // Force an unMute command on EVERY play action to jumpstart failed mobile audio contexts.
