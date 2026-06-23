@@ -7,7 +7,7 @@ export default function PrivacyPolicy() {
       <div className="space-y-6 leading-relaxed">
         <section>
           <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">1. Introduction</h2>
-          <p>Welcome to Glide. We respect your privacy and are committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard your information when you use our mobile application and website. (Please note: Glide is not intended for individuals under the age of 13, and we do not knowingly collect personal information from children. If we discover we have inadvertently collected data from a minor, we will delete it immediately.)</p>
+          <p>Welcome to Glide. We respect your privacy and are committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard your information when you use our mobile application and website.</p>
         </section>
 
         <section>
@@ -18,6 +18,9 @@ export default function PrivacyPolicy() {
             <li><strong>App Activity:</strong> We track your interactions within the app, including articles you like, reels you save, and comments you post in the comment sections.</li>
             <li><strong>Diagnostic Data:</strong> We collect anonymous crash reports, server logs (including IP addresses and browser types), and performance metrics to troubleshoot errors and understand usage patterns.</li>
           </ul>
+          <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+            (Please note: Glide is not intended for individuals under the age of 13, and we do not knowingly collect personal information from children. If we discover we have inadvertently collected data from a minor, we will delete it immediately.)
+          </p>
         </section>
 
         <section>
@@ -33,7 +36,7 @@ export default function PrivacyPolicy() {
 
         <section>
           <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">4. Third Parties We Share Data With</h2>
-          <p>Glide relies on a small set of trusted vendors to operate. Data is encrypted in transit (TLS), and we share data with these providers only to the extent needed to do their jobs. We do not sell your personal data to advertisers or data brokers.</p>
+          <p>Glide relies on a small set of trusted vendors to operate, and we share data with these providers only to the extent needed to do their jobs. We do not sell your personal data to advertisers or data brokers.</p>
           <ul className="list-disc pl-6 mt-2 space-y-1">
             <li><strong>Vercel & Render:</strong> These platforms host our frontend application and backend database (SQLite/Node). Your account data and comments live securely on these managed servers.</li>
             <li><strong>Google (OAuth, YouTube & Gemini AI):</strong> We use Google to authenticate your sign-in securely. We also utilize Google's Gemini AI to generate news summaries and the YouTube API for video embeds. We do not send your personal user data to the AI models.</li>
@@ -48,7 +51,7 @@ export default function PrivacyPolicy() {
 
         <section>
           <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">6. Data Retention and Deletion</h2>
-          <p>We keep your account and activity data for as long as your account remains active. You can delete individual comments directly within the app. To request a complete deletion of your entire account and all associated historical data, please contact us. We will process and complete your deletion request within 14 days. Anonymized diagnostic logs may persist slightly longer for security and abuse-prevention purposes.</p>
+          <p>We keep your account and activity data for as long as your account remains active. You can delete individual comments directly within the app interface up to 15 minutes after posting. To request a complete deletion of your entire account, all associated historical data, or specific comments beyond the 15-minute window, please contact us. We will process and complete your deletion request within 14 days. Anonymized diagnostic logs may persist slightly longer for security and abuse-prevention purposes.</p>
         </section>
 
         <section>

@@ -60,14 +60,9 @@ export default function TermsOfService() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold mb-2 border-b pb-2 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white">8. Disclaimer of Warranties & Limitation of Liability</h2>
-          <p className="text-xs font-bold tracking-wide uppercase text-gray-600 dark:text-gray-400 mb-2">Please read this section carefully as it limits our liability.</p>
-          <p className="text-sm">
-            To the fullest extent permitted by applicable law, the Glide app and all content are provided on an "as is" and "as available" basis, without warranties of any kind. We disclaim all warranties, express or implied, including fitness for a particular purpose, accuracy, and non-infringement.
-          </p>
-          <p className="text-sm mt-3">
-            In no event shall Glide or its developers be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits, data, or use, arising out of your use of the app. To the fullest extent permitted by law, our total aggregate liability to you for any claim arising from your use of the service is limited to the total amount paid by you, if any, to Glide for accessing or using the application in the twelve (12) months preceding the claim.
-          </p>
+          <h2 className="text-xl font-semibold mb-2 border-b pb-2 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white">8. Limitation of Liability</h2>
+          <p>To the fullest extent permitted by applicable law, the Glide app and all content are provided on an "as is" and "as available" basis, without warranties of any kind. We disclaim all warranties, express or implied, including fitness for a particular purpose, accuracy, and non-infringement.</p>
+          <p className="mt-3">In no event shall Glide or its developers be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits, data, or use, arising out of your use of the app. To the fullest extent permitted by law, our total aggregate liability to you for any claim arising from your use of the service is limited to the total amount paid by you, if any, to Glide for accessing or using the application in the twelve (12) months preceding the claim.</p>
         </section>
 
         <section>
