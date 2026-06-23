@@ -252,8 +252,11 @@ function ReelsContent() {
           
           // Check if this is a NEW video snapping into view
           if (lastPlayedIdRef.current !== activeReelId) {
-             // If it's new, reset it to the beginning by sending seekTo(0) to reset the video every time it comes into view.
-             iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
+             // Conditional seekTo. We strictly DO NOT send seekTo(0) if on a mobile browser. 
+             // Because the mobile iframe is destroyed and rebuilt, it naturally starts at 0. Forcing seekTo(0) crashes the cold-booting player.
+             if (!isMobileBrowser) {
+               iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
+             }
              lastPlayedIdRef.current = activeReelId;
           }
           
@@ -270,8 +273,8 @@ function ReelsContent() {
         }
       }
     });
-  // Added isGlobalMuted to the dependency array so it can trigger unmuting
-  }, [activeReelId, isPlaying, isGlobalMuted, reels]);
+  // Added isMobileBrowser to the dependency array to ensure the conditional logic has the latest state.
+  }, [activeReelId, isPlaying, isGlobalMuted, reels, isMobileBrowser]);
 
   // The Infinite Scroll Observer
   useEffect(() => {
@@ -662,7 +665,7 @@ function ReelsContent() {
                       title={reel.title}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
-                      // HIGHLIGHT: Removed loading="lazy". We want the browser to eagerly load this iframe in the background since our virtualization already protects memory limits.
+                      // Removed loading="lazy". We want the browser to eagerly load this iframe in the background since our virtualization already protects memory limits.
                       onLoad={(e) => {
                         if (activeReelId === reel.id && isPlaying) {
                           const iframeNode = e.target as HTMLIFrameElement;
@@ -670,7 +673,10 @@ function ReelsContent() {
                           if (!isGlobalMuted) {
                             iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
                           }
-                          iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          // Added a small safety delay so the play command never hits a YouTube player before it is fully ready, preventing infinite loading spinners.
+                          setTimeout(() => {
+                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          }, 50);
                         }
                       }}
                     ></iframe>
