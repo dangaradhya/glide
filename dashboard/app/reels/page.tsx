@@ -79,10 +79,12 @@ function ReelsContent() {
     }
 
     // Platform Detection Logic
-    // We check if the user is on a mobile OS, AND ensure they are NOT inside our Capacitor native app wrapper.
+    // We check if the user is on a mobile OS. 
+    // We expanded the Capacitor check to include the userAgent because the window object injects asynchronously.
     const isMobileOS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isNativeApp = !!(window as any).Capacitor?.isNative;
-    if (isMobileOS && !isNativeApp) {
+    const isCapacitor = !!(window as any).Capacitor || /Capacitor/i.test(navigator.userAgent);
+    
+    if (isMobileOS && !isCapacitor) {
       setIsMobileBrowser(true);
     }
   }, []);
