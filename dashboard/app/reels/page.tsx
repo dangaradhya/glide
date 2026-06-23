@@ -275,8 +275,8 @@ function ReelsContent() {
         }
       }
     });
-  // HIGHLIGHT: Cleaned dependency array. Removed `reels` so likes/saves do not re-trigger play commands.
-  }, [activeReelId, isPlaying, isGlobalMuted, isMobileBrowser]);
+  // Added isMobileBrowser to the dependency array to ensure the conditional logic has the latest state.
+  }, [activeReelId, isPlaying, isGlobalMuted, reels, isMobileBrowser]);
 
   // The Infinite Scroll Observer
   useEffect(() => {
@@ -583,7 +583,7 @@ function ReelsContent() {
 
   return (
     // bg-gray-100/bg-black switch for the main container
-    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col transition-colors duration-300">
+    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-screen overflow-hidden flex flex-col transition-colors duration-300">
       
       {/* Responsive Header Container for Reels */}
       <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-black/60 to-transparent pointer-events-none transition-all">
@@ -643,7 +643,7 @@ function ReelsContent() {
               data-id={reel.id} // Used by the Intersection Observer
               data-video-id={reel.video_id}
               // Added `will-change-transform` and inline hardware acceleration to offload layout painting to the GPU, removing scroll friction.
-              className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
+              className="reel-container h-screen w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
               style={{ transform: 'translateZ(0)' }}
             >
               {/* The Video Container */}
@@ -671,27 +671,14 @@ function ReelsContent() {
                       onLoad={(e) => {
                         if (activeReelId === reel.id && isPlaying) {
                           const iframeNode = e.target as HTMLIFrameElement;
-                          
-                          // The "Ping" Method
-                          // YouTube's internal JS isn't always ready the exact millisecond `onLoad` fires.
-                          // We ping the play command every 200ms for 1.2 seconds to guarantee it catches the player as soon as it boots
-                          let attempts = 0;
-                          const pingInterval = setInterval(() => {
-                            if (!iframeNode.contentWindow || attempts > 6) {
-                              clearInterval(pingInterval);
-                              // Clean up the reference when done
-                              delete (iframeNode as any).bootPing;
-                              return;
-                            }
-                            if (!isGlobalMuted) {
-                              iframeNode.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
-                            }
-                            iframeNode.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-                            attempts++;
-                          }, 200);
-                          
-                          // Attach the interval ID to the DOM element so the click handler can clear it
-                          (iframeNode as any).bootPing = pingInterval;
+                          // Ensure initial load respects the global interaction state
+                          if (!isGlobalMuted) {
+                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                          }
+                          // Added a small safety delay so the play command never hits a YouTube player before it is fully ready, preventing infinite loading spinners.
+                          setTimeout(() => {
+                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          }, 50);
                         }
                       }}
                     ></iframe>
@@ -725,19 +712,11 @@ function ReelsContent() {
                   onClick={() => {
                     if (activeReelId === reel.id) {
                       
-                      // HIGHLIGHT: Declared `iframe` EXACTLY ONCE at the top of the block to eliminate the redeclaration error!
-                      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
-
-                      // If the user taps while the boot ping is still firing, kill the ping instantly so it doesn't override their pause command!
-                      if (iframe && (iframe as any).bootPing) {
-                        clearInterval((iframe as any).bootPing);
-                        delete (iframe as any).bootPing;
-                      }
-                      
                       // The crucial fix! If the browser is currently muting the feed,
                       // the first tap will UNMUTE it without pausing the video. 
                       if (isGlobalMuted) {
                         setIsGlobalMuted(false);
+                        const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
                         if (iframe && iframe.contentWindow) {
                           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
                         }
@@ -748,6 +727,7 @@ function ReelsContent() {
                       const nextIsPlaying = !isPlaying;
                       setIsPlaying(nextIsPlaying);
                       
+                      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
                       if (iframe && iframe.contentWindow) {
                         if (nextIsPlaying) {
                           // Force an unMute command on EVERY play action to jumpstart failed mobile audio contexts.
