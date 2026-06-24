@@ -642,7 +642,11 @@ function ReelsContent() {
             // If we are on a mobile browser and hit the 3rd reel (index 2), inject the promo card.
             if (isMobileBrowser && index === 2) {
               return (
-                <div key="promo-card" className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative bg-black">
+                <div 
+                  key="promo-card" 
+                  data-id="-1" // <-- Explicitly set to -1 to safely trigger the pause logic
+                  className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative bg-black"
+                >
                   <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-black via-purple-900/40 to-black border-t border-purple-500/30">
                     <div className="bg-purple-600/20 p-6 rounded-full mb-6 border border-purple-500/50">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
