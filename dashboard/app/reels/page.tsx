@@ -26,6 +26,11 @@ function ReelsContent() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Tracks if the user is on a mobile web browser (not the native Capacitor app).
+  // This drives two critical behaviours: skipping seekTo(0) on cold-boot iframes, and
+  // keeping the virtualization window at ±1 (same count as desktop) but WITHOUT the seekTo crash.
+  const isMobileBrowserRef = useRef(false);
+
   // State to track the ID of the first newly loaded reel so we can auto-scroll to it
   const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
@@ -73,6 +78,16 @@ function ReelsContent() {
       }
     } else {
       setIsAuthenticated(false);
+    }
+
+    // Platform detection. We check for a mobile OS user agent AND confirm
+    // we are NOT inside the Capacitor native shell by checking window.Capacitor.isNative.
+    // This correctly separates "iPhone in Safari" from "iPhone in the Glide app".
+    const isMobileOS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const isCapacitorApp = !!(window as any).Capacitor?.isNative;
+    
+    if (isMobileOS && !isCapacitorApp) {
+      isMobileBrowserRef.current = true; // Synchronous, no re-render delay
     }
   }, []);
 
@@ -241,9 +256,17 @@ function ReelsContent() {
           
           // Check if this is a NEW video snapping into view
           if (lastPlayedIdRef.current !== activeReelId) {
-             // If it's new, reset it to the beginning by sending seekTo(0) to reset the video every time it comes into view.
-             iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
-             lastPlayedIdRef.current = activeReelId;
+            // seekTo(0) is skipped entirely on mobile browsers.
+            // On iOS Safari, sending seekTo(0) to a freshly mounted iframe that hasn't
+            // finished initializing its JS API causes the player to freeze. Since the
+            // iframe is destroyed and re-mounted as the user scrolls (cold boot), it
+            // naturally starts at 0 anyway — so seekTo is redundant AND destructive here.
+            // Desktop and native app iframes persist across scrolls (warm), so they DO
+            // need seekTo(0) to reset to the beginning when re-entering the active window.
+            if (!isMobileBrowserRef.current) {
+              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
+            }
+            lastPlayedIdRef.current = activeReelId;
           }
           
           // Unmute ONLY if the user has globally satisfied the browser interaction policy
@@ -259,7 +282,6 @@ function ReelsContent() {
         }
       }
     });
-  // Added isGlobalMuted to the dependency array so it can trigger unmuting
   }, [activeReelId, isPlaying, isGlobalMuted, reels]);
 
   // The Infinite Scroll Observer
