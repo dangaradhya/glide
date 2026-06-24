@@ -151,20 +151,23 @@ export default function Home() {
     // the post ID from the hash and set it as the target for our Auto-Seek engine.
     if (hash && hash.startsWith('#post-')) {
       
+      // CONSUMED CHECK
       if (consumedHashes.has(hash)) return; // Already triggered this session!
 
       const targetId = parseInt(hash.replace('#post-', ''), 10);
       if (!isNaN(targetId)) {
 
-        // We add the hash to the consumedHashes Set to ensure that if the user refreshes the page, it won't re-trigger the auto-scroll.
+        // MARK AS CONSUMED
         consumedHashes.add(hash);
 
         setAutoScrollTarget(targetId);
-        // Clean up the URL so it doesn't re-trigger if the user manually refreshes the page
-        window.history.replaceState(null, '', window.location.pathname);
+        
+        // Use Next.js router to clear the URL instead of raw window.history.
+        // { scroll: false } ensures the page doesn't violently snap to the top during the scrub.
+        router.replace('/', { scroll: false });
       }
     }
-  }, []);
+  }, [router]); 
 
   // 3. THE NETWORK REQUEST 
   // Refactored Fetch Logic to accept a page number

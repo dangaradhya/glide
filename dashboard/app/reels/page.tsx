@@ -13,7 +13,7 @@ import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
 // Import the ThemeToggle component
 import ThemeToggle from '@/components/ThemeToggle';
-import { useSearchParams } from 'next/navigation'; 
+import { useSearchParams, useRouter } from 'next/navigation'; 
 // Added the Web Share API with a fallback to clipboard copying for maximum shareability across platforms
 import { Share } from '@capacitor/share';
 
@@ -66,6 +66,9 @@ function ReelsContent() {
   // Extract the reelId from the URL query parameters to allow deep linking to specific reels
   const searchParams = useSearchParams();
   const targetReelId = searchParams.get('reelId');
+
+  // We use the Next.js router to programmatically manipulate the URL and remove the reelId parameter after it has been consumed.
+  const router = useRouter();
 
   // Only process the deep link if we haven't already opened it this session
   const isFreshDeepLink = targetReelId && !consumedReels.has(targetReelId);
@@ -206,16 +209,12 @@ function ReelsContent() {
           // Lock it so it never triggers again during this SPA session
           if (targetReelId) consumedReels.add(targetReelId);
 
-          // Clear the reelId parameter from the URL address bar immediately 
-          // after the scroll snaps into place. This prevents subsequent infinite scrolls 
-          // or manual browser refreshes from getting trapped on this single video.
-          const url = new URL(window.location.href);
-          url.searchParams.delete('reelId');
-          window.history.replaceState({}, '', url.pathname);
+          // Scrub the Next.js internal router cache so the parameter never resurrects
+          router.replace('/reels', { scroll: false });          
         }, 80);
       }
     }
-  }, [targetReelId, reels, isFreshDeepLink]); 
+  }, [targetReelId, reels, isFreshDeepLink, router]); 
 
   // The Intersection Observer (The Tracker)
   // This watches the screen. When a video container takes up at least 60% of the screen,
