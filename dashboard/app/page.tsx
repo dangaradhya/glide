@@ -17,6 +17,11 @@ import ThemeToggle from '@/components/ThemeToggle';
 // Capacitor Share API for native sharing functionality on mobile devices
 import { Share } from '@capacitor/share';
 
+// This Set lives OUTSIDE the React component lifecycle. 
+// It persists during fast SPA tab switching but clears on a hard refresh.
+// It acts as an absolute lock to ensure deep-links are only executed once per session.
+const consumedHashes = new Set<string>();
+
 export default function Home() {
   // Initialize the Next.js router
   const router = useRouter();
@@ -145,8 +150,15 @@ export default function Home() {
     // We check if the URL has a hash that starts with '#post-'. If it does, we extract 
     // the post ID from the hash and set it as the target for our Auto-Seek engine.
     if (hash && hash.startsWith('#post-')) {
+      
+      if (consumedHashes.has(hash)) return; // Already triggered this session!
+
       const targetId = parseInt(hash.replace('#post-', ''), 10);
       if (!isNaN(targetId)) {
+
+        // We add the hash to the consumedHashes Set to ensure that if the user refreshes the page, it won't re-trigger the auto-scroll.
+        consumedHashes.add(hash);
+
         setAutoScrollTarget(targetId);
         // Clean up the URL so it doesn't re-trigger if the user manually refreshes the page
         window.history.replaceState(null, '', window.location.pathname);
