@@ -26,11 +26,6 @@ function ReelsContent() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Tracks if the user is on a mobile web browser (not the native Capacitor app).
-  // This drives two critical behaviours: skipping seekTo(0) on cold-boot iframes, and
-  // keeping the virtualization window at ±1 (same count as desktop) but WITHOUT the seekTo crash.
-  const isMobileBrowserRef = useRef(false);
-
   // State to track the ID of the first newly loaded reel so we can auto-scroll to it
   const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
@@ -78,16 +73,6 @@ function ReelsContent() {
       }
     } else {
       setIsAuthenticated(false);
-    }
-
-    // Platform detection. We check for a mobile OS user agent AND confirm
-    // we are NOT inside the Capacitor native shell by checking window.Capacitor.isNative.
-    // This correctly separates "iPhone in Safari" from "iPhone in the Glide app".
-    const isMobileOS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isCapacitorApp = !!(window as any).Capacitor?.isNative;
-    
-    if (isMobileOS && !isCapacitorApp) {
-      isMobileBrowserRef.current = true; // Synchronous, no re-render delay
     }
   }, []);
 
@@ -256,17 +241,9 @@ function ReelsContent() {
           
           // Check if this is a NEW video snapping into view
           if (lastPlayedIdRef.current !== activeReelId) {
-            // seekTo(0) is skipped entirely on mobile browsers.
-            // On iOS Safari, sending seekTo(0) to a freshly mounted iframe that hasn't
-            // finished initializing its JS API causes the player to freeze. Since the
-            // iframe is destroyed and re-mounted as the user scrolls (cold boot), it
-            // naturally starts at 0 anyway — so seekTo is redundant AND destructive here.
-            // Desktop and native app iframes persist across scrolls (warm), so they DO
-            // need seekTo(0) to reset to the beginning when re-entering the active window.
-            if (!isMobileBrowserRef.current) {
-              iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
-            }
-            lastPlayedIdRef.current = activeReelId;
+             // If it's new, reset it to the beginning by sending seekTo(0) to reset the video every time it comes into view.
+             iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
+             lastPlayedIdRef.current = activeReelId;
           }
           
           // Unmute ONLY if the user has globally satisfied the browser interaction policy
@@ -276,14 +253,13 @@ function ReelsContent() {
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
           
         } else {
-          // Pause all other videos and mute them to prevent audio bleed
-          if (!isMobileBrowserRef.current) {
-            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
-          }
+          // Send PAUSE command to ALL OTHER videos, or if the user manually paused
+          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
         }
       }
     });
+  // Added isGlobalMuted to the dependency array so it can trigger unmuting
   }, [activeReelId, isPlaying, isGlobalMuted, reels]);
 
   // The Infinite Scroll Observer
@@ -640,24 +616,8 @@ function ReelsContent() {
         </div>
       ) : (
         /* The Scroll Snapping Container */
-        // onTouchEnd on the scroll container.
-        // This is a critical addition for mobile browsers. It ensures that when the user lifts their finger after scrolling, 
-        // we check if the global mute state is still active. If it is, we send an unMute command to all currently mounted iframes. 
-        // This allows the first video to play with sound immediately after the user interacts with the page, satisfying mobile browser 
-        // autoplay policies.
-        <div 
-          className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide"
-          onTouchEnd={() => {
-            if (isMobileBrowserRef.current && !isGlobalMuted) {
-              reels.forEach(reel => {
-                const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
-                if (iframe?.contentWindow) {
-                  iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
-                }
-              });
-            }
-          }}
-        >
+        // Removing pb-20 on mobile so the video stays entirely full screen edge-to-edge
+        <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
           {/* Updated map to include the `index` parameter for the virtualization math */}
           {reels.map((reel, index) => (
             // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
@@ -748,21 +708,9 @@ function ReelsContent() {
                         if (nextIsPlaying) {
                           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
                         } else {
-                          // Skip the playVideo→pauseVideo double-fire on mobile.
-                          // On desktop this sequence clears YouTube's native 'Ended' overlay.
-                          // On mobile Safari, playVideo starts a buffer pipeline and the
-                          // immediate pauseVideo cancels it mid-flight, leaving the player
-                          // in a zombie buffering state — it will spin the loading indicator
-                          // forever and never recover on the next unpause. On mobile, we
-                          // just send pauseVideo directly. The 'Ended' overlay is acceptable
-                          // on mobile since seekTo(0) is also skipped (cold-boot iframes
-                          // restart naturally from the beginning anyway).
-                          if (isMobileBrowserRef.current) {
-                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
-                          } else {
-                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
-                          }
+                          // Force a quick play then pause to clear YouTube's native 'Ended' screen, allowing our Play button to restart the reel natively.
+                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
                         }
                       }
                     }
