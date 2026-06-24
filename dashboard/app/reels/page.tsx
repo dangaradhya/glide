@@ -13,13 +13,9 @@ import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
 // Import the ThemeToggle component
 import ThemeToggle from '@/components/ThemeToggle';
-import { useSearchParams, useRouter } from 'next/navigation'; 
+import { useSearchParams } from 'next/navigation'; 
 // Added the Web Share API with a fallback to clipboard copying for maximum shareability across platforms
 import { Share } from '@capacitor/share';
-
-// Prevents the Next.js internal router from infinitely re-triggering the deep link 
-// when navigating back and forth between tabs.
-const consumedReels = new Set<string>();
 
 function ReelsContent() {
   // 2. STATE MANAGEMENT
@@ -67,12 +63,6 @@ function ReelsContent() {
   const searchParams = useSearchParams();
   const targetReelId = searchParams.get('reelId');
 
-  // We use the Next.js router to programmatically manipulate the URL and remove the reelId parameter after it has been consumed.
-  const router = useRouter();
-
-  // Only process the deep link if we haven't already opened it this session
-  const isFreshDeepLink = targetReelId && !consumedReels.has(targetReelId);
-
   useEffect(() => {
     // Platform detection. We check for a mobile OS user agent AND confirm
     // we are NOT inside the Capacitor native shell by checking window.Capacitor.isNative.
@@ -117,9 +107,8 @@ function ReelsContent() {
       const token = localStorage.getItem('glide_token');
       const headers: Record<string, string>= token ? { 'Authorization': `Bearer ${token}` } : {};
 
-      // Forward targetReelId directly into your server endpoint layout parameters ONLY if fresh
-      const urlParam = isFreshDeepLink && reels.length === 0 ? `&reelId=${targetReelId}` : '';
-      
+      // Forward targetReelId directly into your server endpoint layout parameters
+      const urlParam = targetReelId && reels.length === 0 ? `&reelId=${targetReelId}` : '';
       const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=10&exclude=${currentIds}${urlParam}`, {
         headers
       });
@@ -151,8 +140,9 @@ function ReelsContent() {
         });
 
         // Instantly bind active state playback metrics directly onto your top item to solidify render priorities
-        // If the user came from a fresh deep link, we set that as the active reel immediately
-        if (isFreshDeepLink && reels.length === 0 && data.length > 0) {
+        // If the user came from a deep link with a targetReelId, we want to set that as the active reel immediately to 
+        // ensure it plays as soon as it loads.
+        if (targetReelId && reels.length === 0 && data.length > 0) {
           setActiveReelId(data[0].id);
         }
       }
@@ -193,7 +183,7 @@ function ReelsContent() {
   // this effect runs as soon as our reels feed list hydrates, locate the matching item, 
   // and smoothly centers it on screen.
   useEffect(() => {
-    if (isFreshDeepLink && reels.length > 0) {
+    if (targetReelId && reels.length > 0) {
       // We look for the DOM element that has a data-video-id attribute matching the targetReelId from the URL.
       // This allows us to directly target the specific reel that the user wants to view, even if it's not the first one in the list.
       // By using document.querySelector with a data attribute selector, we can find the exact element that represents the reel with the specified video ID.
@@ -206,15 +196,16 @@ function ReelsContent() {
         setTimeout(() => {
           element.scrollIntoView({ behavior: 'auto', block: 'center' });
 
-          // Lock it so it never triggers again during this SPA session
-          if (targetReelId) consumedReels.add(targetReelId);
-
-          // Scrub the Next.js internal router cache so the parameter never resurrects
-          router.replace('/reels', { scroll: false });          
+          // Clear the reelId parameter from the URL address bar immediately 
+          // after the scroll snaps into place. This prevents subsequent infinite scrolls 
+          // or manual browser refreshes from getting trapped on this single video.
+          const url = new URL(window.location.href);
+          url.searchParams.delete('reelId');
+          window.history.replaceState({}, '', url.pathname);
         }, 80);
       }
     }
-  }, [targetReelId, reels, isFreshDeepLink, router]); 
+  }, [targetReelId, reels]);
 
   // The Intersection Observer (The Tracker)
   // This watches the screen. When a video container takes up at least 60% of the screen,
