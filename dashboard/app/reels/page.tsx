@@ -107,8 +107,16 @@ function ReelsContent() {
       const token = localStorage.getItem('glide_token');
       const headers: Record<string, string>= token ? { 'Authorization': `Bearer ${token}` } : {};
 
+      // === NEW: BROWSER URL VERIFICATION ===
+      // Verify the ID actually exists in the raw browser URL bar before passing it to the backend.
+      // This bypasses the Next.js cache bug completely.
+      const isRealUrlParam = typeof window !== 'undefined' && targetReelId && window.location.search.includes(targetReelId);
+      
       // Forward targetReelId directly into your server endpoint layout parameters
-      const urlParam = targetReelId && reels.length === 0 ? `&reelId=${targetReelId}` : '';
+      const urlParam = isRealUrlParam && reels.length === 0 ? `&reelId=${targetReelId}` : '';
+      // =====================================
+
+      // Forward targetReelId directly into your server endpoint layout parameters
       const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=10&exclude=${currentIds}${urlParam}`, {
         headers
       });
@@ -142,7 +150,7 @@ function ReelsContent() {
         // Instantly bind active state playback metrics directly onto your top item to solidify render priorities
         // If the user came from a deep link with a targetReelId, we want to set that as the active reel immediately to 
         // ensure it plays as soon as it loads.
-        if (targetReelId && reels.length === 0 && data.length > 0) {
+        if (isRealUrlParam && reels.length === 0 && data.length > 0) {
           setActiveReelId(data[0].id);
         }
       }
@@ -183,7 +191,12 @@ function ReelsContent() {
   // this effect runs as soon as our reels feed list hydrates, locate the matching item, 
   // and smoothly centers it on screen.
   useEffect(() => {
-    if (targetReelId && reels.length > 0) {
+    // Check the physical address bar to see if this is a fresh navigation (e.g. from the Vault)
+    // or a ghost-parameter caused by Next.js restoring a tab.
+    const isRealUrlParam = typeof window !== 'undefined' && targetReelId && window.location.search.includes(targetReelId);
+
+    if (targetReelId && reels.length > 0 && isRealUrlParam) {
+
       // We look for the DOM element that has a data-video-id attribute matching the targetReelId from the URL.
       // This allows us to directly target the specific reel that the user wants to view, even if it's not the first one in the list.
       // By using document.querySelector with a data attribute selector, we can find the exact element that represents the reel with the specified video ID.

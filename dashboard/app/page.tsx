@@ -17,6 +17,10 @@ import ThemeToggle from '@/components/ThemeToggle';
 // Capacitor Share API for native sharing functionality on mobile devices
 import { Share } from '@capacitor/share';
 
+// A simple one-time lock for the initial page load. 
+// It resets perfectly on a hard refresh, keeping your desired behavior intact!
+let initialPostSeekExecuted = false;
+
 export default function Home() {
   // Initialize the Next.js router
   const router = useRouter();
@@ -140,6 +144,9 @@ export default function Home() {
   // If a user clicks a shared link (e.g., https://glidesports.app/#post-133), 
   // this grabs the '133' and fires up your Auto-Seek engine automatically!
   useEffect(() => {
+    // If we already scrolled to a post this session, ignore ghost re-renders from tab switches
+    if (initialPostSeekExecuted) return;
+    
     const hash = window.location.hash;
 
     // We check if the URL has a hash that starts with '#post-'. If it does, we extract 
@@ -147,6 +154,9 @@ export default function Home() {
     if (hash && hash.startsWith('#post-')) {
       const targetId = parseInt(hash.replace('#post-', ''), 10);
       if (!isNaN(targetId)) {
+        // Engage the lock and set the target for the Auto-Seek engine. This will trigger the effect above to 
+        // start fetching pages until the post is found.
+        initialPostSeekExecuted = true;
         setAutoScrollTarget(targetId);
         // Clean up the URL so it doesn't re-trigger if the user manually refreshes the page
         window.history.replaceState(null, '', window.location.pathname);
