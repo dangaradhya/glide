@@ -209,7 +209,8 @@ function ReelsContent() {
           }
         });
       },
-      { threshold: 0.6 } 
+      // Dropped to 0.5 to trigger playback slightly earlier during the swipe gesture.
+      { threshold: 0.5 } 
     );
 
     // Attach the observer to every element with the 'reel-container' class
@@ -565,8 +566,8 @@ function ReelsContent() {
   const activeIndex = reels.findIndex(r => r.id === activeReelId);
 
   return (
-    // bg-gray-100/bg-black switch for the main container
-    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-screen overflow-hidden flex flex-col transition-colors duration-300">
+    // Swapped h-screen for h-[100dvh] to prevent layout jumps on mobile browsers
+    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col transition-colors duration-300">
       
       {/* Responsive Header Container for Reels */}
       <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-black/60 to-transparent pointer-events-none transition-all">
@@ -625,7 +626,9 @@ function ReelsContent() {
               key={reel.id} 
               data-id={reel.id} // Used by the Intersection Observer
               data-video-id={reel.video_id}
-              className="reel-container h-screen w-full flex flex-col items-center justify-center snap-center snap-always relative"
+              // Added hardware acceleration and 100dvh fix to lock in smooth 60fps scrolling
+              className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
+              style={{ transform: 'translateZ(0)' }}
             >
               {/* The Video Container */}
               {/* Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl) */}
@@ -660,10 +663,8 @@ function ReelsContent() {
                   )}
                 </div>
 
-                {/* The Magic Fade Delay! This div covers the iframe with the video's thumbnail. 
-                    Added `delay-[300ms]` to the fade-out. When the user swipes to a reel, the thumbnail stays visible for 0.3 seconds 
-                    while the YouTube iframe buffers and triggers 'play' in the background. */}
-                <div className={`absolute inset-0 z-10 transition-opacity duration-300 pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[300ms]' : 'opacity-100 delay-0'}`}>
+                {/* Lowered transition duration to 230ms and set ease-linear for a snappier visual reveal */}
+                <div className={`absolute inset-0 z-10 transition-opacity duration-[230ms] pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[230ms] ease-linear' : 'opacity-100 delay-0'}`}>
                   <img 
                     src={`https://i.ytimg.com/vi/${reel.video_id}/hqdefault.jpg`} 
                     alt={reel.title}
