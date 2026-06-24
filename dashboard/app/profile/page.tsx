@@ -29,6 +29,29 @@ export default function ProfileVault() {
   // State to hold user profile information for display in the header
   const [userProfile, setUserProfile] = useState<{ name: string; picture: string; email: string } | null>(null);
 
+  // Scroll-to-top button state
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Scroll listener to toggle the button visibility when the user scrolls down 400px
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 400) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+
+    // Add the scroll event listener when the component mounts and clean it up on unmount
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Smooth scroll action for the button - scrolls the user back to the top of the page
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // 3. DATA FETCHING
   useEffect(() => {
     const fetchVaultData = async () => {
@@ -83,7 +106,7 @@ export default function ProfileVault() {
   return (
     // Dynamic bg-gray-100/bg-gray-950 classes for Light/Dark mode
     // Injected pt-[max(1rem,env(safe-area-inset-top))] to clear the device notch
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] transition-colors duration-300">
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] transition-colors duration-300 relative">
       <div className="max-w-6xl mx-auto">
         
         {/* Header Section - Text-only header matching the other pages */}
@@ -108,15 +131,16 @@ export default function ProfileVault() {
           <>
             {/* User Profile Header */}
             {/* Dynamic background, borders, and shadows for Light/Dark mode */}
-            <div className="flex flex-col items-center mb-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-md dark:shadow-2xl transition-colors">
+            {/* Reduced padding, margin, avatar size, and font sizes for mobile. Scales up at md: breakpoint. */}
+            <div className="flex flex-col items-center mb-8 md:mb-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 md:p-8 shadow-md dark:shadow-2xl transition-colors">
               <img 
                 src={userProfile?.picture} 
                 alt="Profile" 
-                className="w-24 h-24 rounded-full border-4 border-gray-200 dark:border-gray-800 shadow-lg mb-4"
+                className="w-16 h-16 md:w-24 md:h-24 rounded-full border-2 md:border-4 border-gray-200 dark:border-gray-800 shadow-lg mb-3 md:mb-4"
                 referrerPolicy="no-referrer"
               />
-              <h1 className="text-3xl font-bold">{userProfile?.name}</h1>
-              <p className="text-gray-500 dark:text-gray-400 mt-1">{userProfile?.email}</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-center">{userProfile?.name}</h1>
+              <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-1 text-center">{userProfile?.email}</p>
             </div>
 
             {/* The Tab Navigation */}
@@ -237,6 +261,20 @@ export default function ProfileVault() {
           </>
         )}
       </div>
+
+      {/* Positioned bottom right. Only visible when scrolled past 400px. Animated entry/hover */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 md:bottom-10 md:right-10 bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 z-50 group"
+          aria-label="Scroll to top"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:-translate-y-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+      )}
+
     </main>
   );
 }
