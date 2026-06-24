@@ -276,8 +276,10 @@ function ReelsContent() {
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
           
         } else {
-          // Send PAUSE command to ALL OTHER videos, or if the user manually paused
-          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
+          // Pause all other videos and mute them to prevent audio bleed
+          if (!isMobileBrowserRef.current) {
+            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
+          }
           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
         }
       }
@@ -638,8 +640,24 @@ function ReelsContent() {
         </div>
       ) : (
         /* The Scroll Snapping Container */
-        // Removing pb-20 on mobile so the video stays entirely full screen edge-to-edge
-        <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
+        // onTouchEnd on the scroll container.
+        // This is a critical addition for mobile browsers. It ensures that when the user lifts their finger after scrolling, 
+        // we check if the global mute state is still active. If it is, we send an unMute command to all currently mounted iframes. 
+        // This allows the first video to play with sound immediately after the user interacts with the page, satisfying mobile browser 
+        // autoplay policies.
+        <div 
+          className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide"
+          onTouchEnd={() => {
+            if (isMobileBrowserRef.current && !isGlobalMuted) {
+              reels.forEach(reel => {
+                const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
+                if (iframe?.contentWindow) {
+                  iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                }
+              });
+            }
+          }}
+        >
           {/* Updated map to include the `index` parameter for the virtualization math */}
           {reels.map((reel, index) => (
             // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
@@ -730,9 +748,21 @@ function ReelsContent() {
                         if (nextIsPlaying) {
                           iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
                         } else {
-                          // Force a quick play then pause to clear YouTube's native 'Ended' screen, allowing our Play button to restart the reel natively.
-                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
+                          // Skip the playVideo→pauseVideo double-fire on mobile.
+                          // On desktop this sequence clears YouTube's native 'Ended' overlay.
+                          // On mobile Safari, playVideo starts a buffer pipeline and the
+                          // immediate pauseVideo cancels it mid-flight, leaving the player
+                          // in a zombie buffering state — it will spin the loading indicator
+                          // forever and never recover on the next unpause. On mobile, we
+                          // just send pauseVideo directly. The 'Ended' overlay is acceptable
+                          // on mobile since seekTo(0) is also skipped (cold-boot iframes
+                          // restart naturally from the beginning anyway).
+                          if (isMobileBrowserRef.current) {
+                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
+                          } else {
+                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
+                          }
                         }
                       }
                     }
