@@ -26,6 +26,10 @@ function ReelsContent() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // We use state instead of a ref here because changing this value needs 
+  // to trigger a React re-render to visually display the promo card.
+  const [isMobileBrowser, setIsMobileBrowser] = useState(false);
+
   // State to track the ID of the first newly loaded reel so we can auto-scroll to it
   const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
@@ -58,6 +62,18 @@ function ReelsContent() {
   // Extract the reelId from the URL query parameters to allow deep linking to specific reels
   const searchParams = useSearchParams();
   const targetReelId = searchParams.get('reelId');
+
+  useEffect(() => {
+    // Platform detection. We check for a mobile OS user agent AND confirm
+    // we are NOT inside the Capacitor native shell by checking window.Capacitor.isNative.
+    // This correctly separates "iPhone/Android in Safari/Chrome" from "iPhone/Android in the Glide app".
+    const isMobileOS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const isCapacitorApp = !!(window as any).Capacitor?.isNative;
+    
+    if (isMobileOS && !isCapacitorApp) {
+      setIsMobileBrowser(true); 
+    }
+  }, []);
 
   // Decode JWT to track the logged-in user for comment ownership permissions
   // On component mount, we check localStorage for the presence of a JWT token to determine if the user is authenticated.
@@ -618,210 +634,246 @@ function ReelsContent() {
         /* The Scroll Snapping Container */
         // Removing pb-20 on mobile so the video stays entirely full screen edge-to-edge
         <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
-          {/* Updated map to include the `index` parameter for the virtualization math */}
-          {reels.map((reel, index) => (
-            // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
-            // Added `snap-always` to completely block the user from over-swiping multiple videos at once
-            <div 
-              key={reel.id} 
-              data-id={reel.id} // Used by the Intersection Observer
-              data-video-id={reel.video_id}
-              // Added hardware acceleration and 100dvh fix to lock in smooth 60fps scrolling
-              className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
-              style={{ transform: 'translateZ(0)' }}
-            >
-              {/* The Video Container */}
-              {/* Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl) */}
-              <div className="w-full h-full md:max-w-md md:h-[85vh] bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800">
-                
-                {/* The Scale Trick Wrapper */}
-                <div className="absolute top-1/2 left-1/2 w-[120%] h-[120%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                  {/* Render Window Virtualization! 
-                      We ONLY mount the heavy YouTube iframe if it is the currently active video, 
-                      or the one immediately next/previous to it (index <= 1 on initial load). 
-                      The rest stay completely unloaded until you scroll near them, instantly fixing the network bottleneck! */}
-                  {(activeIndex === -1 ? index <= 1 : Math.abs(index - activeIndex) <= 1) && (
-                    <iframe
-                      id={`reel-player-${reel.id}`}
-                      className="w-full h-full pointer-events-none" 
-                      src={`https://www.youtube-nocookie.com/embed/${reel.video_id}?enablejsapi=1&autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&disablekb=1`}
-                      title={reel.title}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      loading="lazy" // Added native lazy loading as a secondary optimization
-                      onLoad={(e) => {
-                        if (activeReelId === reel.id && isPlaying) {
-                          const iframeNode = e.target as HTMLIFrameElement;
-                          // Ensure initial load respects the global interaction state
-                          if (!isGlobalMuted) {
-                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
-                          }
-                          iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-                        }
-                      }}
-                    ></iframe>
-                  )}
-                </div>
-
-                {/* Lowered transition duration to 230ms and set ease-linear for a snappier visual reveal */}
-                <div className={`absolute inset-0 z-10 transition-opacity duration-[230ms] pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[230ms] ease-linear' : 'opacity-100 delay-0'}`}>
-                  <img 
-                    src={`https://i.ytimg.com/vi/${reel.video_id}/hqdefault.jpg`} 
-                    alt={reel.title}
-                    className="w-full h-full object-cover scale-105"
-                  />
-                </div>
-
-                {/* The "Tap to Unmute" Graphic. Only shows on the very first un-interacted video */}
-                {isGlobalMuted && activeReelId === reel.id && isPlaying && (
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-black/60 text-white px-5 py-2.5 rounded-full backdrop-blur-md flex items-center gap-2 animate-pulse pointer-events-none drop-shadow-xl">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.809L5 14H3a2 2 0 01-2-2V8a2 2 0 012-2h2l3.293-2.809a1 1 0 01.09-.011zM13.707 5.293a1 1 0 011.414 0 8.998 8.998 0 012.879 6.707 8.998 8.998 0 01-2.879 6.707 1 1 0 11-1.414-1.414 6.998 6.998 0 002.293-5.293 6.998 6.998 0 00-2.293-5.293 1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-sm font-bold tracking-wide">Tap to Unmute</span>
+          
+          {/* ADDED BRACES AROUND MAP FUNCTION FOR IF-STATEMENTS */}
+          {reels.map((reel, index) => {
+            
+            // THE MOBILE PROMO CARD INTERCEPTOR 
+            // If we are on a mobile browser and hit the 3rd reel (index 2), inject the promo card.
+            if (isMobileBrowser && index === 2) {
+              return (
+                <div key="promo-card" className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative bg-black">
+                  <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-black via-purple-900/40 to-black border-t border-purple-500/30">
+                    <div className="bg-purple-600/20 p-6 rounded-full mb-6 border border-purple-500/50">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <h2 className="text-3xl font-bold text-white mb-3 drop-shadow-md">Get the Glide App</h2>
+                    <p className="text-gray-400 mb-8 max-w-xs leading-relaxed">Experience flawless playback, instant highlights, and zero interruptions.</p>
+                    <a 
+                      href="https://play.google.com/store/apps/details?id=com.glidesports.app" 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 px-10 rounded-full text-lg shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all active:scale-95 z-50"
+                    >
+                      Open in App Store
+                    </a>
                   </div>
-                )}
+                </div>
+              );
+            }
 
-                {/* The Transparent Overlay (The Click Catcher) */}
-                <div 
-                  className="absolute inset-0 z-20 cursor-pointer"
-                  onClick={() => {
-                    if (activeReelId === reel.id) {
-                      
-                      // The crucial fix! If the browser is currently muting the feed,
-                      // the first tap will UNMUTE it without pausing the video. 
-                      if (isGlobalMuted) {
-                        setIsGlobalMuted(false);
+            // Block rendering of anything past the promo card on mobile browsers so they can't scroll past it
+            if (isMobileBrowser && index > 2) return null;
+
+            return (
+              // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
+              // Added `snap-always` to completely block the user from over-swiping multiple videos at once
+              <div 
+                key={reel.id} 
+                data-id={reel.id} // Used by the Intersection Observer
+                data-video-id={reel.video_id}
+                // Added hardware acceleration and 100dvh fix to lock in smooth 60fps scrolling
+                className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
+                style={{ transform: 'translateZ(0)' }}
+              >
+                {/* The Video Container */}
+                {/* Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl) */}
+                <div className="w-full h-full md:max-w-md md:h-[85vh] bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800">
+                  
+                  {/* The Scale Trick Wrapper */}
+                  <div className="absolute top-1/2 left-1/2 w-[120%] h-[120%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                    {/* Render Window Virtualization! 
+                        We ONLY mount the heavy YouTube iframe if it is the currently active video, 
+                        or the one immediately next/previous to it (index <= 1 on initial load). 
+                        The rest stay completely unloaded until you scroll near them, instantly fixing the network bottleneck! */}
+                    {(activeIndex === -1 ? index <= 1 : Math.abs(index - activeIndex) <= 1) && (
+                      <iframe
+                        id={`reel-player-${reel.id}`}
+                        className="w-full h-full pointer-events-none" 
+                        src={`https://www.youtube-nocookie.com/embed/${reel.video_id}?enablejsapi=1&autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&disablekb=1`}
+                        title={reel.title}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        loading="lazy" // Added native lazy loading as a secondary optimization
+                        onLoad={(e) => {
+                          if (activeReelId === reel.id && isPlaying) {
+                            const iframeNode = e.target as HTMLIFrameElement;
+                            // Ensure initial load respects the global interaction state
+                            if (!isGlobalMuted) {
+                              iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                            }
+                            iframeNode.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          }
+                        }}
+                      ></iframe>
+                    )}
+                  </div>
+
+                  {/* Lowered transition duration to 230ms and set ease-linear for a snappier visual reveal */}
+                  <div className={`absolute inset-0 z-10 transition-opacity duration-[230ms] pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[230ms] ease-linear' : 'opacity-100 delay-0'}`}>
+                    <img 
+                      src={`https://i.ytimg.com/vi/${reel.video_id}/hqdefault.jpg`} 
+                      alt={reel.title}
+                      className="w-full h-full object-cover scale-105"
+                    />
+                  </div>
+
+                  {/* The "Tap to Unmute" Graphic. Only shows on the very first un-interacted video */}
+                  {isGlobalMuted && activeReelId === reel.id && isPlaying && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-black/60 text-white px-5 py-2.5 rounded-full backdrop-blur-md flex items-center gap-2 animate-pulse pointer-events-none drop-shadow-xl">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.809L5 14H3a2 2 0 01-2-2V8a2 2 0 012-2h2l3.293-2.809a1 1 0 01.09-.011zM13.707 5.293a1 1 0 011.414 0 8.998 8.998 0 012.879 6.707 8.998 8.998 0 01-2.879 6.707 1 1 0 11-1.414-1.414 6.998 6.998 0 002.293-5.293 6.998 6.998 0 00-2.293-5.293 1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-sm font-bold tracking-wide">Tap to Unmute</span>
+                    </div>
+                  )}
+
+                  {/* The Transparent Overlay (The Click Catcher) */}
+                  <div 
+                    className="absolute inset-0 z-20 cursor-pointer"
+                    onClick={() => {
+                      if (activeReelId === reel.id) {
+                        
+                        // The crucial fix! If the browser is currently muting the feed,
+                        // the first tap will UNMUTE it without pausing the video. 
+                        if (isGlobalMuted) {
+                          setIsGlobalMuted(false);
+                          const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
+                          if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+                          }
+                          return; // Exit early so we don't accidentally pause it!
+                        }
+
+                        // Normal Play/Pause functionality resumes after the first tap
+                        const nextIsPlaying = !isPlaying;
+                        setIsPlaying(nextIsPlaying);
+                        
                         const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
                         if (iframe && iframe.contentWindow) {
-                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
-                        }
-                        return; // Exit early so we don't accidentally pause it!
-                      }
-
-                      // Normal Play/Pause functionality resumes after the first tap
-                      const nextIsPlaying = !isPlaying;
-                      setIsPlaying(nextIsPlaying);
-                      
-                      const iframe = document.getElementById(`reel-player-${reel.id}`) as HTMLIFrameElement;
-                      if (iframe && iframe.contentWindow) {
-                        if (nextIsPlaying) {
-                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-                        } else {
-                          // Force a quick play then pause to clear YouTube's native 'Ended' screen, allowing our Play button to restart the reel natively.
-                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
-                          iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
+                          if (nextIsPlaying) {
+                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                          } else {
+                            // Force a quick play then pause to clear YouTube's native 'Ended' screen, allowing our Play button to restart the reel natively.
+                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+                            iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo' }), '*');
+                          }
                         }
                       }
-                    }
-                  }}
-                >
-                  {!isPlaying && activeReelId === reel.id && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-lg transition-all duration-300">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-white opacity-90 drop-shadow-2xl" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right-Side Action Bar (Like, Comment, and Share) */}
-                <div className="absolute right-4 bottom-28 md:bottom-24 flex flex-col items-center space-y-4 z-40 pointer-events-auto">
-                  
-                  {/* Like Button */}
-                  <button 
-                    onClick={() => handleLike(reel.id)} 
-                    className="flex flex-col items-center group transition-transform active:scale-90"
+                    }}
                   >
-                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
-                      <svg 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        className={`w-6 h-6 transition-colors ${reel.userLiked ? 'text-red-500' : 'text-white'}`} 
-                        fill={reel.userLiked ? "currentColor" : "none"} 
-                        viewBox="0 0 24 24" 
-                        stroke="currentColor" 
-                        strokeWidth={2}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                      </svg>
-                    </div>
-                    <span className="text-white text-xs font-semibold drop-shadow-md">{reel.likes || 0}</span>
-                  </button>
-
-                  {/* Comment Button */}
-                  <button 
-                    onClick={() => openCommentDrawer(reel)}
-                    className="flex flex-col items-center group transition-transform active:scale-90"
-                    title="View Discussion"
-                  >
-                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    </div>
-                    {/* Render the comment count directly from the subquery data */}
-                    <span className="text-white text-xs font-semibold drop-shadow-md">{reel.commentCount || 0}</span>
-                  </button>
-
-                  {/* Bookmark Button */}
-                  <button 
-                    onClick={() => handleSave(reel.id)} 
-                    className="flex flex-col items-center group transition-transform active:scale-90"
-                    title="Save this reel"
-                  >
-                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
-                      <svg 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        className={`w-6 h-6 transition-colors ${reel.userSaved ? 'text-blue-500' : 'text-white'}`} 
-                        fill={reel.userSaved ? "currentColor" : "none"} 
-                        viewBox="0 0 24 24" 
-                        stroke="currentColor" 
-                        strokeWidth={2}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    </div>
-                  </button>
-
-                  {/* Share Button */}
-                  <button 
-                    onClick={() => handleShare(reel.id, reel.video_id, reel.title)} 
-                    className="flex flex-col items-center group relative transition-transform active:scale-90"
-                  >
-                    <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                      </svg>
-                    </div>
-                    
-                    {copiedId === reel.id && (
-                      <span className="absolute right-14 top-2 bg-white text-black text-xs font-bold px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap animate-bounce">
-                        Copied!
-                      </span>
+                    {!isPlaying && activeReelId === reel.id && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-lg transition-all duration-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-white opacity-90 drop-shadow-2xl" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                        </svg>
+                      </div>
                     )}
-                  </button>
-                </div>
+                  </div>
 
-                {/* Video Metadata Overlay */}
-                {/* Pushed the metadata text up slightly on mobile (pb-20) so it doesn't get hidden behind the bottom navigation */}
-                <div className="absolute bottom-0 left-0 w-full p-6 pb-20 md:pb-6 pr-20 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-30">
-                  <h3 className="text-lg font-bold text-white leading-snug drop-shadow-lg">{reel.title}</h3>
-                  <p className="text-sm text-gray-300 mt-2 font-medium bg-white/10 backdrop-blur-sm inline-block px-3 py-1 rounded-full shadow-sm">@{reel.channel_name}</p>
+                  {/* Right-Side Action Bar (Like, Comment, and Share) */}
+                  <div className="absolute right-4 bottom-28 md:bottom-24 flex flex-col items-center space-y-4 z-40 pointer-events-auto">
+                    
+                    {/* Like Button */}
+                    <button 
+                      onClick={() => handleLike(reel.id)} 
+                      className="flex flex-col items-center group transition-transform active:scale-90"
+                    >
+                      <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          className={`w-6 h-6 transition-colors ${reel.userLiked ? 'text-red-500' : 'text-white'}`} 
+                          fill={reel.userLiked ? "currentColor" : "none"} 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor" 
+                          strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                      </div>
+                      <span className="text-white text-xs font-semibold drop-shadow-md">{reel.likes || 0}</span>
+                    </button>
+
+                    {/* Comment Button */}
+                    <button 
+                      onClick={() => openCommentDrawer(reel)}
+                      className="flex flex-col items-center group transition-transform active:scale-90"
+                      title="View Discussion"
+                    >
+                      <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                      </div>
+                      {/* Render the comment count directly from the subquery data */}
+                      <span className="text-white text-xs font-semibold drop-shadow-md">{reel.commentCount || 0}</span>
+                    </button>
+
+                    {/* Bookmark Button */}
+                    <button 
+                      onClick={() => handleSave(reel.id)} 
+                      className="flex flex-col items-center group transition-transform active:scale-90"
+                      title="Save this reel"
+                    >
+                      <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          className={`w-6 h-6 transition-colors ${reel.userSaved ? 'text-blue-500' : 'text-white'}`} 
+                          fill={reel.userSaved ? "currentColor" : "none"} 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor" 
+                          strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {/* Share Button */}
+                    <button 
+                      onClick={() => handleShare(reel.id, reel.video_id, reel.title)} 
+                      className="flex flex-col items-center group relative transition-transform active:scale-90"
+                    >
+                      <div className="bg-black/40 p-2.5 rounded-full backdrop-blur-md mb-1 border border-white/10 group-hover:bg-black/60 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                        </svg>
+                      </div>
+                      
+                      {copiedId === reel.id && (
+                        <span className="absolute right-14 top-2 bg-white text-black text-xs font-bold px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap animate-bounce">
+                          Copied!
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Video Metadata Overlay */}
+                  {/* Pushed the metadata text up slightly on mobile (pb-20) so it doesn't get hidden behind the bottom navigation */}
+                  <div className="absolute bottom-0 left-0 w-full p-6 pb-20 md:pb-6 pr-20 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-30">
+                    <h3 className="text-lg font-bold text-white leading-snug drop-shadow-lg">{reel.title}</h3>
+                    <p className="text-sm text-gray-300 mt-2 font-medium bg-white/10 backdrop-blur-sm inline-block px-3 py-1 rounded-full shadow-sm">@{reel.channel_name}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })} 
+          {/* CLOSED MAP BRACES */}
 
+          {/* Added !isMobileBrowser check here because we don't want the sentinel to appear on mobile browsers, which would allow users to scroll past the promo card. */}
           {/* Removed `snap-center` and reduced the height of the sentinel block. 
               This completely eliminates the glitchy infinite-snap loop when loading new videos! */}
-          {hasMore && (
+          {hasMore && !isMobileBrowser && (
             <div id="reels-scroll-sentinel" className="h-24 w-full flex items-center justify-center shrink-0">
               {loadingMore && (
                 <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
               )}
             </div>
           )}
-          {!hasMore && (
+
+          {!hasMore && !isMobileBrowser && (
              <div className="h-24 w-full flex items-center justify-center shrink-0">
                 <p className="text-gray-500 dark:text-gray-400 font-medium">You've caught up on all the highlights!</p>
              </div>
