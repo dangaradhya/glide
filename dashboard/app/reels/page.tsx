@@ -7,9 +7,12 @@
 "use client";
 
 // 1. IMPORTS
+// Importing Capacitor for native mobile features, React hooks for state and lifecycle management,
+import { Capacitor } from '@capacitor/core';
 import { useEffect, useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation'; 
+
 // Added the Web Share API with a fallback to clipboard copying for maximum shareability across platforms
 import { Share } from '@capacitor/share';
 
@@ -64,7 +67,7 @@ function ReelsContent() {
     // we are NOT inside the Capacitor native shell by checking window.Capacitor.isNative.
     // This correctly separates "iPhone/Android in Safari/Chrome" from "iPhone/Android in the Glide app".
     const isMobileOS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isCapacitorApp = !!(window as any).Capacitor?.isNative;
+    const isCapacitorApp = Capacitor.isNativePlatform();
     
     if (isMobileOS && !isCapacitorApp) {
       setIsMobileBrowser(true); 
@@ -581,23 +584,18 @@ function ReelsContent() {
     // Swapped h-screen for h-[100dvh] to prevent layout jumps on mobile browsers
     <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col">
       
-      {/* Responsive Header Container for Reels */}
-      <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-black/60 to-transparent pointer-events-none transition-all">
-        
-        <div className="w-full md:max-w-md mx-auto flex flex-col">
-          {/* Row 2: Navigation Links (Moved to its own row to prevent mobile collisions) */}
-          {/* Hidden on mobile (hidden md:flex), visible securely on desktop */}
-          <div className="hidden md:flex justify-center gap-6 md:gap-8 mt-2 md:mt-3 w-fit mx-auto pointer-events-auto px-6 py-2.5 transition-all">
-            <Link href="/" className="text-white font-bold text-lg hover:text-gray-200 transition-colors drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
-              Posts
-            </Link>
-            <span className="text-white font-bold text-lg border-b-2 border-white pb-0.5 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] cursor-default">
-              Reels
-            </span>
-            <Link href="/match_center" className="text-white font-bold text-lg hover:text-gray-200 transition-colors drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
-              Match Center
-            </Link>
-          </div>
+      {/* Desktop Navigation Bar (Hidden on Mobile) */}
+      <div className="absolute top-0 w-full z-50 p-6 hidden md:flex justify-center pointer-events-none transition-all">
+        <div className="pointer-events-auto flex gap-6 md:gap-8">
+          <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
+            Posts
+          </Link>
+          <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1 cursor-default">
+            Reels
+          </span>
+          <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
+            Match Center
+          </Link>
         </div>
       </div>
 
@@ -658,13 +656,19 @@ function ReelsContent() {
                 key={reel.id} 
                 data-id={reel.id} // Used by the Intersection Observer
                 data-video-id={reel.video_id}
-                // Added hardware acceleration and 100dvh fix to lock in smooth 60fps scrolling
-                className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative will-change-transform"
+                
+                // Added overflow-hidden to the outermost container to trap any bleeding layers from the 120% scaled iframe
+                className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative overflow-hidden will-change-transform"
+                
                 style={{ transform: 'translateZ(0)' }}
               >
                 {/* The Video Container */}
                 {/* Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl) */}
-                <div className="w-full h-full md:max-w-md md:h-[85vh] bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800">
+                <div 
+                  className="w-full h-full md:max-w-md md:h-[85vh] bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800"
+                  // Fallback strict inset path to physically mask the boundaries of the GPU layer
+                  style={{ clipPath: 'inset(0)' }}
+                >
                   
                   {/* The Scale Trick Wrapper */}
                   <div className="absolute top-1/2 left-1/2 w-[120%] h-[120%] -translate-x-1/2 -translate-y-1/2 pointer-events-none">
