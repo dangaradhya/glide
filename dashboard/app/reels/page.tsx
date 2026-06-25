@@ -583,7 +583,7 @@ function ReelsContent() {
 
   return (
     // Swapped h-screen for h-[100dvh] to prevent layout jumps on mobile browsers
-    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col transition-colors duration-300">
+    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col">
       
       {/* Responsive Header Container for Reels */}
       <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-black/60 to-transparent pointer-events-none transition-all">

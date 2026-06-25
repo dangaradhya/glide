@@ -56,7 +56,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       {/* Added light/dark default background and text colors, plus a smooth CSS transition */}
-      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-white transition-colors duration-300">
+      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-white">
         
         {/* Wrapped the entire application in your new theme Providers */}
         <Providers>

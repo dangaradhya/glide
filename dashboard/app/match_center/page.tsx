@@ -137,7 +137,7 @@ export default function LiveUpdatesPage() {
 
   return (
     // Injected pt-[max(1rem,env(safe-area-inset-top))] to clear the device notch
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative transition-colors duration-300">
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative">
       
       {/* HIGHLIGHT: Added pb-24 md:pb-8 so the grid clears the mobile bottom navigation bar */}
       <div className="max-w-4xl mx-auto pb-24 md:pb-8">

@@ -516,7 +516,7 @@ export default function Home() {
     // Adjusted background/text colors for Light/Dark mode with a smooth transition
     // Adjusted max-w constraints on wrapper wrapper block to hold large layouts comfortably
     // Injected pt-[max(1rem,env(safe-area-inset-top))] to push UI below the physical phone notch
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative transition-colors duration-300 overflow-hidden">
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative overflow-hidden">
       
       {/* Changed max-w-6xl to max-w-3xl to perfectly center the single-column feed */}
       {/* Added pb-20 md:pb-0 so the feed isn't hidden behind the new mobile bottom nav */}
