@@ -9,10 +9,6 @@
 // 1. IMPORTS
 import { useEffect, useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
-// Import the Google Auth component
-import AuthButton from '@/components/AuthButton';
-// Import the ThemeToggle component
-import ThemeToggle from '@/components/ThemeToggle';
 import { useSearchParams } from 'next/navigation'; 
 // Added the Web Share API with a fallback to clipboard copying for maximum shareability across platforms
 import { Share } from '@capacitor/share';
@@ -589,22 +585,6 @@ function ReelsContent() {
       <div className="absolute top-0 w-full z-50 p-4 pt-[max(1.5rem,env(safe-area-inset-top))] flex flex-col bg-gradient-to-b from-black/60 to-transparent pointer-events-none transition-all">
         
         <div className="w-full md:max-w-md mx-auto flex flex-col">
-          {/* Row 1: Logo and Auth - Spreads out on desktop, tight on mobile */}
-          {/* Added md:-translate-y-4 to explicitly shift the logo and Auth buttons UP by 16px on desktop, fully clearing the reel */}
-          <div className="flex justify-between items-center w-full pointer-events-auto mt-2 md:-translate-y-4">
-            {/* Added the Glide Logo to balance the flex layout and match the home page */}
-            <Link href="/" className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0 drop-shadow-md">
-              Glide
-            </Link>
-
-            {/* Right side: Theme & Auth */}
-            {/* gap-2 md:gap-4 keeps them properly distanced without being detached to the absolute edges */}
-            <div className="flex items-center gap-2 md:gap-4 shrink-0">
-               <ThemeToggle />
-               <AuthButton />
-            </div>
-          </div>
-
           {/* Row 2: Navigation Links (Moved to its own row to prevent mobile collisions) */}
           {/* Hidden on mobile (hidden md:flex), visible securely on desktop */}
           <div className="hidden md:flex justify-center gap-6 md:gap-8 mt-2 md:mt-3 w-fit mx-auto pointer-events-auto px-6 py-2.5 transition-all">
