@@ -52,6 +52,10 @@ app.use(cors({ origin: allowedOrigins }));
 // Without this, the body of an incoming request would just be raw bytes.
 app.use(express.json());
 
+// Apple sends authentication payloads from web browsers as form-urlencoded data.
+// This middleware allows Express to decode those incoming bytes into req.body.
+app.use(express.urlencoded({ extended: true }));
+
 // THE SCRAPER BOUNCER
 // This middleware blocks anyone from posting fake news to your database by requiring a secret API key.
 const verifyScraper = (req, res, next) => {
@@ -327,8 +331,15 @@ app.post('/api/auth/google', async (req, res) => {
 // Apple requires this parallel route. It verifies the identity token cryptographically
 // against Apple's public servers, avoiding the need for manual API keys.
 app.post('/api/auth/apple', async (req, res) => {
-    // Apple only sends 'name' on the very first login, so we must accept it dynamically from the frontend
-    const { token, name } = req.body;
+    // If Apple posts browser data via encoded form streams, the key fields map to 
+    // id_token and user variables instead of native JSON body labels.
+    const token = req.body.token || req.body.id_token;
+    const incomingName = req.body.name || req.body.user;
+
+    // If the validation layers fail to extract a token block from the stream, exit immediately to prevent processing errors.
+    if (!token) {
+        return res.status(400).json({ error: 'Missing secure identity token payload.' });
+    }
 
     try {
         // We configure the audience verification block to accept both an array containing 
@@ -346,8 +357,22 @@ app.post('/api/auth/apple', async (req, res) => {
         // This avoids a massive database migration entirely!
         const unifiedProviderId = `apple_${apple_sub}`;
         
-        // Provide a default fallback name/picture if Apple/Frontend doesn't provide one
-        const finalName = name || email.split('@')[0];
+        let parsedName = "";
+        if (incomingName) {
+            try {
+                // Apple sends the web profile name layer wrapped as an explicit JSON string block.
+                const profileObj = typeof incomingName === 'string' ? JSON.parse(incomingName) : incomingName;
+                if (profileObj.name && profileObj.name.firstName) {
+                    parsedName = `${profileObj.name.firstName} ${profileObj.name.lastName || ''}`.trim();
+                } else if (profileObj.firstName) {
+                    parsedName = `${profileObj.firstName} ${profileObj.lastName || ''}`.trim();
+                }
+            } catch (e) {
+                if (typeof incomingName === 'string') parsedName = incomingName;
+            }
+        }
+        
+        const finalName = parsedName || email.split('@')[0];
         const defaultPicture = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=random`;
 
         db.get(`SELECT id, name, picture FROM users WHERE google_id = ?`, [unifiedProviderId], (err, user) => {
