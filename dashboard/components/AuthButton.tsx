@@ -39,8 +39,8 @@ export default function AuthButton() {
     // to prevent any false positives, while guaranteeing a hit on Apple devices.
     const userAgent = window.navigator.userAgent || '';
     const isApple = /Macintosh|iPhone|iPad|iPod/i.test(userAgent);
-    const isStrictlyApple = isApple && !/Android|Windows|Linux/i.test(userAgent);
-    setIsAppleDevice(isStrictlyApple);
+    const isStrictlyAppleDevice = isApple && !/Android|Windows|Linux/i.test(userAgent);
+    setIsAppleDevice(isStrictlyAppleDevice);
     
     // Initialize GoogleAuth for native platforms. This is necessary for handling Google sign-in in Capacitor apps.
     if (nativePlatform) {
@@ -53,13 +53,30 @@ export default function AuthButton() {
       } catch (e) {
         console.error("Capacitor Init Error: ", e);
       }
+    } 
+    // If we are NOT in the native iOS app but are on an Apple device (like Safari Web), 
+    // we must dynamically load and initialize Apple's official Web JS framework so the button works.
+    else if (isStrictlyAppleDevice) {
+      const script = document.createElement('script');
+      script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+      script.async = true;
+      script.onload = () => {
+        (window as any).AppleID.auth.init({
+          clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
+          scope: 'name email',
+          redirectURI: 'https://glide-sports.onrender.com/api/auth/apple', 
+          state: 'sign-in',
+          usePopup: true // This tells Apple to use an inline browser popup instead of redirecting the page
+        });
+      };
+      document.body.appendChild(script);
     }
 
     const storedUser = localStorage.getItem('glide_user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
-  }, []);
+  }, [isAppleDevice]);
 
   // The authenticateWithServer function sends the Google ID token to the backend server for verification. If successful, it stores 
   // the returned token and user data in localStorage and updates the user state.
@@ -134,18 +151,30 @@ export default function AuthButton() {
   // retrieves the identity token and optional full name, and then calls authenticateAppleWithServer to verify the token with the backend.
   const handleAppleLogin = async () => {
     try {
-      const { response } = await SignInWithApple.authorize({
-        clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
-        redirectURI: 'https://glide-sports.onrender.com/api/auth/apple',
-        scopes: 'email name',
-      });
-      
-      const fullName = response.givenName ? `${response.givenName} ${response.familyName}` : undefined;
-      
-      // If the response contains an identity token, we proceed to authenticate with the server. The full name is optional and may 
-      // not be provided if the user has previously signed in.
-      if (response.identityToken) {
-         await authenticateAppleWithServer(response.identityToken, fullName);
+      // Branch logic: If running on a native device, use the Capacitor plugin.
+      // If running on a web browser, use Apple's official JS popup API.
+      if (isNative) {
+        const { response } = await SignInWithApple.authorize({
+          clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
+          redirectURI: 'https://glide-sports.onrender.com/api/auth/apple',
+          scopes: 'email name',
+        });
+        
+        const fullName = response.givenName ? `${response.givenName} ${response.familyName}` : undefined;
+        
+        if (response.identityToken) {
+           await authenticateAppleWithServer(response.identityToken, fullName);
+        }
+      } else {
+        // Web flow using Apple JS
+        const response = await (window as any).AppleID.auth.signIn();
+        
+        // Apple's web object structure is slightly different from their native plugin
+        const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
+        
+        if (response.authorization.id_token) {
+           await authenticateAppleWithServer(response.authorization.id_token, fullName);
+        }
       }
     } catch (error) {
       console.error("Apple Login Error: ", error);
@@ -226,7 +255,7 @@ export default function AuthButton() {
             
             <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Continue to Glide</h2>
             <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-              Sign in to save highlights, drop takes, and sync your account. 
+              Sign in to save highlights, drop takes, and sync your account.
             </p>
 
             <div className="space-y-4 w-full flex flex-col items-center">
@@ -255,7 +284,6 @@ export default function AuthButton() {
                     onError={() => console.error('Google Web Form Error: Login Failed')}
                     theme="filled_black"
                     shape="rectangular"
-                    width="320"
                     size="large"
                     text="continue_with"
                     useOneTap={false} 
