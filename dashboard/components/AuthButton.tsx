@@ -35,9 +35,12 @@ export default function AuthButton() {
     const nativePlatform = Capacitor.isNativePlatform();
     setIsNative(nativePlatform);
     
-    // Check if the user is on any Apple ecosystem device
-    const userAgent = navigator.userAgent;
-    setIsAppleDevice(/Mac|iPhone|iPad|iPod/i.test(userAgent));
+    // This checks the userAgent directly, explicitly excluding Linux/Windows/Android 
+    // to prevent any false positives, while guaranteeing a hit on Apple devices.
+    const userAgent = window.navigator.userAgent || '';
+    const isApple = /Macintosh|iPhone|iPad|iPod/i.test(userAgent);
+    const isStrictlyApple = isApple && !/Android|Windows|Linux/i.test(userAgent);
+    setIsAppleDevice(isStrictlyApple);
     
     // Initialize GoogleAuth for native platforms. This is necessary for handling Google sign-in in Capacitor apps.
     if (nativePlatform) {
@@ -223,7 +226,7 @@ export default function AuthButton() {
             
             <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Continue to Glide</h2>
             <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-              Sign in to save highlights, drop takes, and sync your account. No credit card required.
+              Sign in to save highlights, drop takes, and sync your account. 
             </p>
 
             <div className="space-y-4 w-full flex flex-col items-center">
@@ -231,7 +234,7 @@ export default function AuthButton() {
               {isNative ? (
                 <button 
                   onClick={handleNativeLogin} 
-                  className="flex items-center justify-center w-full py-3.5 px-4 rounded-2xl border border-gray-700 bg-transparent hover:bg-white/5 text-white font-medium transition-colors active:scale-[0.98]"
+                  className="flex items-center justify-center w-[320px] py-3.5 px-4 rounded-full border border-gray-700 bg-transparent hover:bg-white/5 text-white font-medium transition-colors active:scale-[0.98]"
                 >
                   <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -243,12 +246,16 @@ export default function AuthButton() {
                 </button>
               ) : (
                 
-                <div className="w-full flex justify-center">
+                // We wrap Google's iframe in a strict container with overflow-hidden to 
+                // slice off their default white-box styling and force the button to perfectly 
+                // match our modal's dimensions (320px pill shape).
+                <div className="w-[320px] h-[52px] rounded-full overflow-hidden border border-gray-700 bg-black flex justify-center items-center">
                   <GoogleLogin
                     onSuccess={handleWebLoginSuccess}
                     onError={() => console.error('Google Web Form Error: Login Failed')}
                     theme="filled_black"
                     shape="rectangular"
+                    width="320"
                     size="large"
                     text="continue_with"
                     useOneTap={false} 
@@ -260,7 +267,7 @@ export default function AuthButton() {
               {isAppleDevice && (
                 <button 
                   onClick={handleAppleLogin} 
-                  className="flex items-center justify-center w-full py-3.5 px-4 rounded-2xl border border-gray-700 bg-transparent hover:bg-white/5 text-white font-medium transition-colors active:scale-[0.98]"
+                  className="flex items-center justify-center w-[320px] py-3.5 px-4 rounded-full border border-gray-700 bg-transparent hover:bg-white/5 text-white font-medium transition-colors active:scale-[0.98]"
                 >
                   <svg className="w-5 h-5 mr-3 mb-1 fill-white" viewBox="0 0 24 24">
                     <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.17 2.24-.86 3.44-.8 1.48.05 2.75.69 3.48 1.83-3.13 1.76-2.58 5.76.28 6.84-.71 1.85-1.74 3.54-2.28 4.3zm-3.51-14.8c-.89.1-1.85-.4-2.5-1.15-.65-.79-.98-1.92-.81-2.92.93-.07 1.94.43 2.58 1.18.67.78.96 1.81.73 2.89z" />
@@ -271,7 +278,6 @@ export default function AuthButton() {
 
             </div>
 
-            {/* === CHANGED: UPDATED ROUTING LINKS TO MATCH YOUR URLS === */}
             <p className="text-xs text-gray-500 mt-8 text-center">
               By continuing you agree to our <Link href="/privacy" className="text-gray-400 hover:text-white transition-colors underline decoration-gray-600 underline-offset-2">Privacy Policy</Link> and <Link href="/terms" className="text-gray-400 hover:text-white transition-colors underline decoration-gray-600 underline-offset-2">Terms of Service</Link>.
             </p>
