@@ -17,6 +17,7 @@ const sqlite3 = require('sqlite3').verbose(); // verbose() gives us detailed err
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const appleSignin = require('apple-signin-auth');
 
 // 2. INITIALIZATION
 // This creates our application instance. Think of this like initializing your Axum router in Rust.
@@ -31,6 +32,9 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
+// This is the Services ID you generate in the Apple Developer Portal (e.g., com.glidesports.app.services)
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID; 
+
 // 3. MIDDLEWARE
 // Middleware are functions that intercept incoming HTTP requests before they hit your routes.
 // Secure CORS policy restricting access to specific frontend domains
@@ -40,7 +44,8 @@ const allowedOrigins = [
     'https://www.glidesports.app',    // Backup redirect
     'capacitor://localhost',          // iOS native app
     'https://localhost',              // Android native app (Secure default)
-    'http://localhost'                // Android native app (Legacy backup)
+    'http://localhost',               // Android native app (Legacy backup)
+    'https://appleid.apple.com'       // Apple Sign-In callback
 ];
 app.use(cors({ origin: allowedOrigins })); 
 // express.json() parses incoming JSON payloads (like when we POST new data). 
@@ -316,6 +321,56 @@ app.post('/api/auth/google', async (req, res) => {
     } catch (error) {
         console.error("Google Auth Error:", error);
         res.status(401).json({ error: 'Invalid Google token' });
+    }
+});
+
+// Apple requires this parallel route. It verifies the identity token cryptographically
+// against Apple's public servers, avoiding the need for manual API keys.
+app.post('/api/auth/apple', async (req, res) => {
+    // Apple only sends 'name' on the very first login, so we must accept it dynamically from the frontend
+    const { token, name } = req.body;
+
+    try {
+        // Cryptographically verify the JWT using Apple's public key endpoint
+        const payload = await appleSignin.verifyIdToken(token, {
+            audience: APPLE_CLIENT_ID, 
+            ignoreExpiration: true,
+        });
+
+        // Extract Apple's unique user identifier and their verified email
+        const { sub: apple_sub, email } = payload;
+        
+        // Brilliant DB Hack: Since our users table enforces a 'NOT NULL' on google_id, 
+        // we prepend the Apple sub with "apple_" and store it in that column. 
+        // This avoids a massive database migration entirely!
+        const unifiedProviderId = `apple_${apple_sub}`;
+        
+        // Provide a default fallback name/picture if Apple/Frontend doesn't provide one
+        const finalName = name || email.split('@')[0];
+        const defaultPicture = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=random`;
+
+        db.get(`SELECT id, name, picture FROM users WHERE google_id = ?`, [unifiedProviderId], (err, user) => {
+            if (err) return res.status(500).json({ error: 'Database error' });
+
+            if (user) {
+                // Returning Apple User
+                const glideToken = jwt.sign({ userId: user.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
+                return res.status(200).json({ token: glideToken, user: { id: user.id, name: user.name, picture: user.picture } });
+            } else {
+                // New Apple User
+                db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
+                [unifiedProviderId, email, finalName, defaultPicture], function(insertErr) {
+                    if (insertErr) return res.status(500).json({ error: 'Failed to create Apple user' });
+                    
+                    // After inserting, 'this.lastID' gives us the ID of the newly created user. We use that to generate the JWT token.
+                    const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
+                    res.status(201).json({ token: glideToken, user: { id: this.lastID, name: finalName, picture: defaultPicture } });
+                });
+            }
+        });
+    } catch (error) {
+        console.error("Apple Auth Error:", error);
+        res.status(401).json({ error: 'Invalid Apple token' });
     }
 });
 

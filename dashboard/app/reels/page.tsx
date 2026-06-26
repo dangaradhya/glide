@@ -29,6 +29,9 @@ function ReelsContent() {
   // to trigger a React re-render to visually display the promo card.
   const [isMobileBrowser, setIsMobileBrowser] = useState(false);
 
+  // To serve the correct App Store or Play Store link on the Promo Card
+  const [isIOSBrowser, setIsIOSBrowser] = useState(false);
+
   // State to track the ID of the first newly loaded reel so we can auto-scroll to it
   const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
@@ -66,11 +69,15 @@ function ReelsContent() {
     // Platform detection. We check for a mobile OS user agent AND confirm
     // we are NOT inside the Capacitor native shell by checking window.Capacitor.isNative.
     // This correctly separates "iPhone/Android in Safari/Chrome" from "iPhone/Android in the Glide app".
-    const isMobileOS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const userAgent = navigator.userAgent; 
+    const isMobileOS = /iPhone|iPad|iPod|Android/i.test(userAgent);
     const isCapacitorApp = Capacitor.isNativePlatform();
     
     if (isMobileOS && !isCapacitorApp) {
       setIsMobileBrowser(true); 
+
+      // If it's a mobile browser, check specifically if it's an iOS device
+      setIsIOSBrowser(/iPhone|iPad|iPod/i.test(userAgent));
     }
   }, []);
 
@@ -580,6 +587,13 @@ function ReelsContent() {
   // Pre-calculate active index before mapping to power the Virtualization window
   const activeIndex = reels.findIndex(r => r.id === activeReelId);
 
+  // Determine which store to send the user to based on the OS detection logic.
+  // We grab the 10-digit App Store ID from the environment variable. 
+  const appleAppId = process.env.NEXT_PUBLIC_APPLE_APP_STORE_ID;
+  const storeLink = isIOSBrowser 
+    ? `https://apps.apple.com/us/app/glide-sports/id${appleAppId}` 
+    : "https://play.google.com/store/apps/details?id=com.glidesports.app";
+
   return (
     // Swapped h-screen for h-[100dvh] to prevent layout jumps on mobile browsers
     <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col">
@@ -634,12 +648,13 @@ function ReelsContent() {
                     <h2 className="text-3xl font-bold text-white mb-3 drop-shadow-md">Get the Glide App</h2>
                     <p className="text-gray-400 mb-8 max-w-xs leading-relaxed">Experience flawless playback, instant highlights, and zero interruptions.</p>
                     <a 
-                      href="https://play.google.com/store/apps/details?id=com.glidesports.app" 
+                      href={storeLink} 
                       target="_blank" 
                       rel="noopener noreferrer" 
                       className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 px-10 rounded-full text-lg shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all active:scale-95 z-50"
                     >
-                      Open in App Store
+                      {/* DYNAMIC STORE BUTTON TEXT */}
+                      {isIOSBrowser ? 'Open in App Store' : 'Open in Play Store'}
                     </a>
                   </div>
                 </div>
