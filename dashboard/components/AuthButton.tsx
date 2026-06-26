@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { SignInWithApple } from '@capacitor-community/apple-sign-in';
-import { Capacitor } from '@capacitor-core';
+import { Capacitor } from '@capacitor/core';
 import Link from 'next/link'; 
 import { useTheme } from 'next-themes';
 
