@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { SignInWithApple } from '@capacitor-community/apple-sign-in';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor } from '@capacitor-core';
 import Link from 'next/link'; 
 import { useTheme } from 'next-themes';
 
@@ -100,6 +100,9 @@ export default function AuthButton() {
         setUser(data.user);
         setShowModal(false); 
         window.location.reload();
+      } 
+      else {
+        console.error("Backend Google Auth Error Status:", res.status, data);
       }
     } catch (error: any) {
       console.error("Network Fetch Failed: ", error.message);
@@ -125,6 +128,9 @@ export default function AuthButton() {
         setUser(data.user);
         setShowModal(false); 
         window.location.reload();
+      } 
+      else {
+        console.error("Backend Apple Auth Error Status:", res.status, data);
       }
     } catch (error: any) {
       console.error("Apple Network Fetch Failed: ", error.message);
