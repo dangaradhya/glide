@@ -54,25 +54,6 @@ export default function AuthButton() {
         console.error("Capacitor Init Error: ", e);
       }
     } 
-    // If we are NOT in the native iOS app but are on an Apple device (like Safari Web), 
-    // we must dynamically load and initialize Apple's official Web JS framework so the button works.
-    else if (isStrictlyAppleDevice) {
-      const script = document.createElement('script');
-      script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
-      script.async = true;
-      script.onload = () => {
-        if ((window as any).AppleID) {
-          (window as any).AppleID.auth.init({
-            clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
-            scope: 'name email',
-            redirectURI: 'https://glide-sports.onrender.com/api/auth/apple', 
-            state: 'sign-in',
-            usePopup: true // This tells Apple to use an inline browser popup instead of redirecting the page
-          });
-        }
-      };
-      document.body.appendChild(script);
-    }
 
     const storedUser = localStorage.getItem('glide_user');
     if (storedUser) {
@@ -173,12 +154,13 @@ export default function AuthButton() {
            await authenticateAppleWithServer(response.identityToken, fullName);
         }
       } else {
-        // Else, if the app is running on a web platform, we set up a message event listener to handle the response from Apple's JS framework.
+        // By opening Apple's OAuth stream manually, we force Apple to POST the token 
+        // straight to your backend, bypassing all iPad/Safari JS execution errors.
         const handleAppleWebMessage = (event: MessageEvent) => {
-          // Check that the origin is your trusted backend domain
           if (event.origin !== "https://glide-sports.onrender.com") return;
           
-          // Check that the message contains the expected data structure
+          // We listen for a message event from the backend server after Apple redirects back to it. If the event contains a token, 
+          // we store it in localStorage, update the user state, close the modal, and reload the page.
           if (event.data && event.data.token) {
             localStorage.setItem('glide_token', event.data.token);
             localStorage.setItem('glide_user', JSON.stringify(event.data.user));
@@ -191,18 +173,12 @@ export default function AuthButton() {
         
         window.addEventListener('message', handleAppleWebMessage);
         
-        // We then check if the AppleID object is available in the window (which indicates that Apple's JS framework has been loaded).
-        if ((window as any).AppleID) {
-          try {
-            const response = await (window as any).AppleID.auth.signIn();
-            const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
-            if (response.authorization?.id_token) {
-               await authenticateAppleWithServer(response.authorization.id_token, fullName);
-            }
-          } catch (popupErr) {
-            console.log("Popup flow completed. Awaiting backend payload...");
-          }
-        }
+        // This explicitly commands Apple to open a secure authorization window, 
+        // authenticate with TouchID, and immediately execute a POST to Render.
+        const appleAuthUrl = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
+        
+        // Browsers allow this popup perfectly because it is tied directly to an onClick event.
+        window.open(appleAuthUrl, 'AppleLogin', 'width=400,height=600');
       }
     } catch (error) {
       console.error("Apple Login Error: ", error);
