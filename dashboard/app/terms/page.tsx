@@ -12,7 +12,7 @@ export default function TermsOfService() {
 
         <section>
           <h2 className="text-xl font-semibold mb-2 border-b pb-2 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white">2. Accounts and Security</h2>
-          <p>To access certain features, such as the comment section, you must authenticate using your Google account. You are solely responsible for maintaining the security of your underlying Google account and for all activity that occurs under your profile within Glide.</p>
+          <p>To access certain features, such as the comment section, you must authenticate using your Google or Apple account. You are solely responsible for maintaining the security of your underlying Google or Apple account and for all activity that occurs under your profile within Glide.</p>
         </section>
 
         <section>

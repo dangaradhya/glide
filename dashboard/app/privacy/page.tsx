@@ -14,7 +14,7 @@ export default function PrivacyPolicy() {
           <h2 className="text-xl font-semibold mb-2 border-b pb-2 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white">2. Information We Collect</h2>
           <p>When you use Glide, we collect the following types of information:</p>
           <ul className="list-disc pl-6 mt-3 space-y-2">
-            <li><strong>Account Data:</strong> When you sign in using Google OAuth, we collect your basic profile information, specifically your name, email address, and profile picture. We never see or store your password.</li>
+            <li><strong>Account Data:</strong> When you sign in using Google OAuth or Apple Sign-In, we collect your basic profile information, specifically your name, email address, and profile picture (where available). We never see or store your password.</li>
             <li><strong>App Activity:</strong> We track your interactions within the app, including articles you like, reels you save, and comments you post in the comment sections.</li>
             <li><strong>Diagnostic Data:</strong> We collect anonymous crash reports, server logs (including IP addresses and browser types), and performance metrics to troubleshoot errors and understand usage patterns.</li>
           </ul>
@@ -40,6 +40,7 @@ export default function PrivacyPolicy() {
           <ul className="list-disc pl-6 mt-3 space-y-2">
             <li><strong>Vercel & Render:</strong> These platforms host our frontend application and backend database (SQLite/Node). Your account data and comments live securely on these managed servers.</li>
             <li><strong>Google (OAuth, YouTube & Gemini AI):</strong> We use Google to authenticate your sign-in securely. We also utilize Google's Gemini AI to generate news summaries and the YouTube API for video embeds. We do not send your personal user data to the AI models.</li>
+            <li><strong>Apple (Sign-In):</strong> We use Apple Sign-In to securely authenticate users on iOS and compatible systems. Apple issues an identity token verifying your credentials and shares basic account details (name and email) to configure your profile.</li>
             <li><strong>Sentry:</strong> Sentry monitors our application for bugs and crashes. They receive anonymized diagnostic data to help us fix technical issues rapidly.</li>
           </ul>
         </section>
