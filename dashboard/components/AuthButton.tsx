@@ -152,9 +152,8 @@ export default function AuthButton() {
   // The handleAppleLogin function is used to initiate the Apple Sign-In process. It calls the SignInWithApple plugin to authorize the user, 
   // retrieves the identity token and optional full name, and then calls authenticateAppleWithServer to verify the token with the backend.
   const handleAppleLogin = async () => {
+    // We wrap the Apple login process in a try-catch block to handle any errors that may occur during the authorization process.
     try {
-      // Branch logic: If running on a native device, use the Capacitor plugin.
-      // If running on a web browser, use Apple's official JS popup API.
       if (isNative) {
         const { response } = await SignInWithApple.authorize({
           clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
@@ -163,28 +162,43 @@ export default function AuthButton() {
         });
         
         const fullName = response.givenName ? `${response.givenName} ${response.familyName}` : undefined;
-        
         if (response.identityToken) {
            await authenticateAppleWithServer(response.identityToken, fullName);
         }
       } else {
-        // If web browser security parameters block popup messaging on an iPad,
-        // we bounce gracefully to the standard secure direct link channel.
+        // We set up a structural event listener to catch the payload sent from the backend script.
+        const handleAppleWebMessage = (event: MessageEvent) => {
+          // Check that the origin is your trusted backend domain
+          if (event.origin !== "https://glide-sports.onrender.com") return;
+          
+          // If the event data contains a token, we store it in localStorage along with the user information, 
+          // update the user state, close the modal, and reload the page to reflect the authenticated state.
+          if (event.data && event.data.token) {
+            localStorage.setItem('glide_token', event.data.token);
+            localStorage.setItem('glide_user', JSON.stringify(event.data.user));
+            setUser(event.data.user);
+            setShowModal(false);
+            window.removeEventListener('message', handleAppleWebMessage);
+            window.location.reload();
+          }
+        };
+        
+        // We add the event listener to the window object to listen for messages from the backend script.
+        window.addEventListener('message', handleAppleWebMessage);
+
+        // We check if the AppleID object is available in the window. If it is, we attempt to sign in using Apple's authentication flow.
         if ((window as any).AppleID) {
+          // We attempt to sign in using Apple's authentication flow. If successful, we extract the identity token and optional full name,
           try {
             const response = await (window as any).AppleID.auth.signIn();
-            if (response && response.authorization?.id_token) {
-               const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
+            const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
+            if (response.authorization?.id_token) {
                await authenticateAppleWithServer(response.authorization.id_token, fullName);
-               return;
             }
           } catch (popupErr) {
-            console.warn("Popup blocked or context failure, using standard redirect:", popupErr);
+            window.location.href = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
           }
         }
-        
-        // Direct fallback link configuration
-        window.location.href = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
       }
     } catch (error) {
       console.error("Apple Login Error: ", error);

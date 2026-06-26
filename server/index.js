@@ -376,21 +376,37 @@ app.post('/api/auth/apple', async (req, res) => {
         const defaultPicture = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=random`;
 
         db.get(`SELECT id, name, picture FROM users WHERE google_id = ?`, [unifiedProviderId], (err, user) => {
-            if (err) return res.status(500).json({ error: 'Database error' });
+            if (err) return res.status(500).send("Database error");
 
             if (user) {
                 // Returning Apple User
-                const glideToken = jwt.sign({ userId: user.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                return res.status(200).json({ token: glideToken, user: { id: user.id, name: user.name, picture: user.picture } });
+                const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                const userData = { token: glideToken, user: { id: user.id, name: user.name, picture: user.picture } };
+                
+                // Instead of printing raw text, we send an active script. This tells the browser 
+                // to shoot the credentials back to your frontend tab and close the window!
+                return res.send(`
+                    <script>
+                        window.opener.postMessage(${JSON.stringify(userData)}, "https://glidesports.app");
+                        window.close();
+                    </script>
+                `);
             } else {
                 // New Apple User
                 db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
-                [unifiedProviderId, email, finalName, defaultPicture], function(insertErr) {
-                    if (insertErr) return res.status(500).json({ error: 'Failed to create Apple user' });
+                [unifiedProviderId, safeEmail, finalName, defaultPicture], function(insertErr) {
+                    if (insertErr) return res.status(500).send("Failed to create user");
                     
-                    // After inserting, 'this.lastID' gives us the ID of the newly created user. We use that to generate the JWT token.
-                    const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                    res.status(201).json({ token: glideToken, user: { id: this.lastID, name: finalName, picture: defaultPicture } });
+                    const glideToken = jwt.sign({ userId: this.lastID, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                    const userData = { token: glideToken, user: { id: this.lastID, name: finalName, picture: defaultPicture } };
+                    
+                    // Send the same script bridge to handle new user registration paths
+                    return res.send(`
+                        <script>
+                            window.opener.postMessage(${JSON.stringify(userData)}, "https://glidesports.app");
+                            window.close();
+                        </script>
+                    `);
                 });
             }
         });
