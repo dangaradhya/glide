@@ -28,6 +28,11 @@ export default function AuthButton() {
   // Modal state to control the visibility of the sign-in options.
   const [showModal, setShowModal] = useState(false);
 
+  // Track stable variable scope for life-cycle dependency
+  const userAgentString = typeof window !== 'undefined' ? window.navigator.userAgent : '';
+  const isAppleSystem = /Macintosh|iPhone|iPad|iPod/i.test(userAgentString);
+  const isStrictlyAppleDevice = isAppleSystem && !/Android|Windows|Linux/i.test(userAgentString);
+
   useEffect(() => {
     setMounted(true);
 
@@ -35,11 +40,6 @@ export default function AuthButton() {
     const nativePlatform = Capacitor.isNativePlatform();
     setIsNative(nativePlatform);
     
-    // This checks the userAgent directly, explicitly excluding Linux/Windows/Android 
-    // to prevent any false positives, while guaranteeing a hit on Apple devices.
-    const userAgent = window.navigator.userAgent || '';
-    const isApple = /Macintosh|iPhone|iPad|iPod/i.test(userAgent);
-    const isStrictlyAppleDevice = isApple && !/Android|Windows|Linux/i.test(userAgent);
     setIsAppleDevice(isStrictlyAppleDevice);
     
     // Initialize GoogleAuth for native platforms. This is necessary for handling Google sign-in in Capacitor apps.
@@ -61,13 +61,15 @@ export default function AuthButton() {
       script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
       script.async = true;
       script.onload = () => {
-        (window as any).AppleID.auth.init({
-          clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
-          scope: 'name email',
-          redirectURI: 'https://glide-sports.onrender.com/api/auth/apple', 
-          state: 'sign-in',
-          usePopup: true // This tells Apple to use an inline browser popup instead of redirecting the page
-        });
+        if ((window as any).AppleID) {
+          (window as any).AppleID.auth.init({
+            clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
+            scope: 'name email',
+            redirectURI: 'https://glide-sports.onrender.com/api/auth/apple', 
+            state: 'sign-in',
+            usePopup: true // This tells Apple to use an inline browser popup instead of redirecting the page
+          });
+        }
       };
       document.body.appendChild(script);
     }
@@ -76,7 +78,7 @@ export default function AuthButton() {
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
-  }, [isAppleDevice]);
+  }, [isStrictlyAppleDevice]);
 
   // The authenticateWithServer function sends the Google ID token to the backend server for verification. If successful, it stores 
   // the returned token and user data in localStorage and updates the user state.
@@ -166,14 +168,18 @@ export default function AuthButton() {
            await authenticateAppleWithServer(response.identityToken, fullName);
         }
       } else {
-        // Web flow using Apple JS
-        const response = await (window as any).AppleID.auth.signIn();
-        
-        // Apple's web object structure is slightly different from their native plugin
-        const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
-        
-        if (response.authorization.id_token) {
-           await authenticateAppleWithServer(response.authorization.id_token, fullName);
+        // If Apple JS API load initialization is incomplete on mobile web browsers, 
+        // fallback directly onto an explicit secure OAuth layout link stream.
+        if ((window as any).AppleID) {
+          try {
+            const response = await (window as any).AppleID.auth.signIn();
+            const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
+            if (response.authorization?.id_token) {
+               await authenticateAppleWithServer(response.authorization.id_token, fullName);
+            }
+          } catch (popupErr) {
+            window.location.href = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
+          }
         }
       }
     } catch (error) {
@@ -275,19 +281,21 @@ export default function AuthButton() {
                 </button>
               ) : (
                 
-                // We wrap Google's iframe in a strict container with overflow-hidden to 
-                // slice off their default white-box styling and force the button to perfectly 
-                // match our modal's dimensions (320px pill shape).
-                <div className="w-[320px] h-[52px] rounded-full overflow-hidden border border-gray-700 bg-black flex justify-center items-center">
-                  <GoogleLogin
-                    onSuccess={handleWebLoginSuccess}
-                    onError={() => console.error('Google Web Form Error: Login Failed')}
-                    theme="filled_black"
-                    shape="rectangular"
-                    size="large"
-                    text="continue_with"
-                    useOneTap={false} 
-                  />
+                // This targets the absolute sub-root variables of the native iframe injection, 
+                // overriding the white layout mask directly from your global stylesheet layer.
+                <div className="w-[320px] h-[52px] rounded-full overflow-hidden border border-gray-700 bg-[#0F1117] flex justify-center items-center mix-blend-screen select-none">
+                  <div className="w-full scale-[1.01]">
+                    <GoogleLogin
+                      onSuccess={handleWebLoginSuccess}
+                      onError={() => console.error('Google Web Form Error: Login Failed')}
+                      theme="filled_black"
+                      shape="rectangular"
+                      size="large"
+                      width="320"
+                      text="continue_with"
+                      useOneTap={false} 
+                    />
+                  </div>
                 </div>
               )}
 
