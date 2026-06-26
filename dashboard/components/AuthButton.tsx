@@ -152,8 +152,9 @@ export default function AuthButton() {
   // The handleAppleLogin function is used to initiate the Apple Sign-In process. It calls the SignInWithApple plugin to authorize the user, 
   // retrieves the identity token and optional full name, and then calls authenticateAppleWithServer to verify the token with the backend.
   const handleAppleLogin = async () => {
-    // We wrap the Apple login process in a try-catch block to handle any errors that may occur during the authorization process.
+    // The handleAppleLogin function is used to initiate the Apple Sign-In process. It calls the SignInWithApple plugin to authorize the user,
     try {
+      // If the app is running on a native platform, we use the SignInWithApple plugin to authorize the user.
       if (isNative) {
         const { response } = await SignInWithApple.authorize({
           clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
@@ -166,13 +167,12 @@ export default function AuthButton() {
            await authenticateAppleWithServer(response.identityToken, fullName);
         }
       } else {
-        // We set up a structural event listener to catch the payload sent from the backend script.
+        // Else, if the app is running on a web platform, we set up a message event listener to handle the response from Apple's JS framework.
         const handleAppleWebMessage = (event: MessageEvent) => {
           // Check that the origin is your trusted backend domain
           if (event.origin !== "https://glide-sports.onrender.com") return;
           
-          // If the event data contains a token, we store it in localStorage along with the user information, 
-          // update the user state, close the modal, and reload the page to reflect the authenticated state.
+          // Check that the message contains the expected data structure
           if (event.data && event.data.token) {
             localStorage.setItem('glide_token', event.data.token);
             localStorage.setItem('glide_user', JSON.stringify(event.data.user));
@@ -183,12 +183,10 @@ export default function AuthButton() {
           }
         };
         
-        // We add the event listener to the window object to listen for messages from the backend script.
         window.addEventListener('message', handleAppleWebMessage);
-
-        // We check if the AppleID object is available in the window. If it is, we attempt to sign in using Apple's authentication flow.
+        
+        // We then check if the AppleID object is available in the window (which indicates that Apple's JS framework has been loaded).
         if ((window as any).AppleID) {
-          // We attempt to sign in using Apple's authentication flow. If successful, we extract the identity token and optional full name,
           try {
             const response = await (window as any).AppleID.auth.signIn();
             const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
@@ -196,7 +194,7 @@ export default function AuthButton() {
                await authenticateAppleWithServer(response.authorization.id_token, fullName);
             }
           } catch (popupErr) {
-            window.location.href = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
+            console.log("Popup flow completed. Awaiting backend payload...");
           }
         }
       }

@@ -390,7 +390,7 @@ app.post('/api/auth/apple', async (req, res) => {
                 // to shoot the credentials back to your frontend tab and close the window!
                 return res.send(`
                     <script>
-                        window.opener.postMessage(${JSON.stringify(userData)}, "https://glidesports.app");
+                        window.opener.postMessage(${JSON.stringify(userData)}, "*");
                         window.close();
                     </script>
                 `);
@@ -406,7 +406,7 @@ app.post('/api/auth/apple', async (req, res) => {
                     // Send the same script bridge to handle new user registration paths
                     return res.send(`
                         <script>
-                            window.opener.postMessage(${JSON.stringify(userData)}, "https://glidesports.app");
+                            window.opener.postMessage(${JSON.stringify(userData)}, "*");
                             window.close();
                         </script>
                     `);
