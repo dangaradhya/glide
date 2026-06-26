@@ -351,6 +351,9 @@ app.post('/api/auth/apple', async (req, res) => {
 
         // Extract Apple's unique user identifier and their verified email
         const { sub: apple_sub, email } = payload;
+
+        // Apple doesn't always send the email in the payload, especially if the user has chosen to hide it.
+        const safeEmail = email || `${apple_sub}@privaterelay.appleid.com`;
         
         // Brilliant DB Hack: Since our users table enforces a 'NOT NULL' on google_id, 
         // we prepend the Apple sub with "apple_" and store it in that column. 
