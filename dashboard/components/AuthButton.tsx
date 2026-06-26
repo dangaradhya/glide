@@ -1,6 +1,6 @@
+// components/AuthButton.tsx
 "use client";
 
-// IMPORTS
 import { useState, useEffect } from 'react';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
@@ -9,28 +9,37 @@ import { Capacitor } from '@capacitor/core';
 import Link from 'next/link'; 
 import { useTheme } from 'next-themes';
 
-// AuthButton Component - Handles both Web and Native Google Authentication
+// AuthButton handles user authentication via Google and Apple, both for web and native platforms. 
+// It manages user state, modal visibility, and communicates with the backend server for token verification and user data retrieval.
 export default function AuthButton() {
   const [user, setUser] = useState<{ name: string; picture: string } | null>(null);
   const { resolvedTheme } = useTheme();
   
-  // Added state to track if component is mounted, if the platform is native, if the platform is iOS, and if the modal is shown
+  // We use a mounted state to ensure that the component only renders after the client-side has fully loaded, 
+  // preventing hydration mismatches in Next.js. isNative is used to determine if the app is running in a native environment 
+  // (iOS or Android) via Capacitor.
   const [mounted, setMounted] = useState(false);
   const [isNative, setIsNative] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  
+  // We swapped isIOS for isAppleDevice and now parse the userAgent. 
+  // This correctly targets Native iOS, Mobile Safari, and Desktop macOS Safari.
+  const [isAppleDevice, setIsAppleDevice] = useState(false);  
+
+  // Modal state to control the visibility of the sign-in options.
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     setMounted(true);
 
-    // Check if the platform is native (iOS or Android)
+    // Determine if the app is running on a native platform (iOS or Android) using Capacitor.
     const nativePlatform = Capacitor.isNativePlatform();
     setIsNative(nativePlatform);
     
-    // Check if the specific native platform is iOS
-    setIsIOS(Capacitor.getPlatform() === 'ios');
-
-    // Initialize GoogleAuth for native platforms
+    // Check if the user is on any Apple ecosystem device
+    const userAgent = navigator.userAgent;
+    setIsAppleDevice(/Mac|iPhone|iPad|iPod/i.test(userAgent));
+    
+    // Initialize GoogleAuth for native platforms. This is necessary for handling Google sign-in in Capacitor apps.
     if (nativePlatform) {
       try {
         GoogleAuth.initialize({
@@ -49,7 +58,8 @@ export default function AuthButton() {
     }
   }, []);
 
-  // Function to authenticate with the server using the Google token
+  // The authenticateWithServer function sends the Google ID token to the backend server for verification. If successful, it stores 
+  // the returned token and user data in localStorage and updates the user state.
   const authenticateWithServer = async (token: string) => {
     try {
       const res = await fetch('https://glide-sports.onrender.com/api/auth/google', {
@@ -59,8 +69,9 @@ export default function AuthButton() {
       });
 
       const data = await res.json();
-
-      // If the server response is OK, store the token and user data in localStorage, update the user state, close the modal, and reload the page
+      
+      // If the server responds with a successful status, we store the authentication token and user information in localStorage, 
+      // update the user state, close the modal, and reload the page to reflect the authenticated state.
       if (res.ok) {
         localStorage.setItem('glide_token', data.token);
         localStorage.setItem('glide_user', JSON.stringify(data.user));
@@ -73,7 +84,8 @@ export default function AuthButton() {
     }
   };
 
-  // Function to authenticate with the server using the Apple token and optional name
+  // The authenticateAppleWithServer function is similar to authenticateWithServer but is specifically for handling Apple Sign-In. 
+  // It sends the Apple identity token and optional user name to the backend server for verification.
   const authenticateAppleWithServer = async (token: string, name?: string) => {
     try {
       const res = await fetch('https://glide-sports.onrender.com/api/auth/apple', {
@@ -83,8 +95,8 @@ export default function AuthButton() {
       });
 
       const data = await res.json();
-
-      // If the server response is OK, store the token and user data in localStorage, update the user state, close the modal, and reload the page
+      
+      // If the server responds with a successful status, we store the authentication token and user information in localStorage,
       if (res.ok) {
         localStorage.setItem('glide_token', data.token);
         localStorage.setItem('glide_user', JSON.stringify(data.user));
@@ -97,13 +109,14 @@ export default function AuthButton() {
     }
   };
 
-  // Handle successful login for web Google authentication
+  // The handleWebLoginSuccess function is triggered when a user successfully logs in via the Google web login. It extracts the 
+  // credential from the response and calls authenticateWithServer to verify the token with the backend.
   const handleWebLoginSuccess = async (credentialResponse: any) => {
     if (!credentialResponse.credential) return;
     await authenticateWithServer(credentialResponse.credential);
   };
 
-  // Handle native Google login
+  // The handleNativeLogin function is used for native platforms (iOS/Android) to initiate the Google sign-in process. It calls
   const handleNativeLogin = async () => {
     try {
       const googleUser = await GoogleAuth.signIn();
@@ -114,7 +127,8 @@ export default function AuthButton() {
     }
   };
 
-  // Handle Apple login
+  // The handleAppleLogin function is used to initiate the Apple Sign-In process. It calls the SignInWithApple plugin to authorize the user, 
+  // retrieves the identity token and optional full name, and then calls authenticateAppleWithServer to verify the token with the backend.
   const handleAppleLogin = async () => {
     try {
       const { response } = await SignInWithApple.authorize({
@@ -123,10 +137,10 @@ export default function AuthButton() {
         scopes: 'email name',
       });
       
-      // Apple only sends the name object on the very first login
       const fullName = response.givenName ? `${response.givenName} ${response.familyName}` : undefined;
       
-      // If the response contains an identity token, authenticate with the server
+      // If the response contains an identity token, we proceed to authenticate with the server. The full name is optional and may 
+      // not be provided if the user has previously signed in.
       if (response.identityToken) {
          await authenticateAppleWithServer(response.identityToken, fullName);
       }
@@ -135,7 +149,7 @@ export default function AuthButton() {
     }
   };
 
-  // Handle logout for both native and web platforms
+  // The handleLogout function handles user logout for both native and web platforms. It signs the user out of Google if on a native platform,
   const handleLogout = async () => {
     if (isNative) {
       try { await GoogleAuth.signOut(); } catch (e) {}
@@ -149,12 +163,14 @@ export default function AuthButton() {
     window.location.reload();
   };
 
-  // Render the component based on the user's authentication state
+  // The component renders different UI elements based on the user's authentication state. If the user is authenticated, 
+  // it displays their profile picture and name with a logout button. If not, it shows a "Sign In" button that opens a 
+  // modal with sign-in options for Google and Apple.
   if (!mounted) {
     return <div className="w-[100px] h-[36px] opacity-0"></div>;
   }
   
-  // If the user is authenticated, display their profile picture, name, and a logout button
+  // If the user is authenticated, we display their profile picture and first name, along with a logout button.
   if (user) {
     return (
       <div className="flex items-center space-x-3 bg-white dark:bg-white/10 rounded-full pr-4 p-1 backdrop-blur-md border border-gray-200 dark:border-white/20 shadow-sm dark:shadow-lg">
@@ -174,9 +190,9 @@ export default function AuthButton() {
     );
   }
 
-  // If the user is not authenticated, display a "Sign In" button that opens the modal 
-  // The modal contains options for Google and Apple sign-in, depending on the platform (web or native).
-  // The modal also includes a close button and links to the Terms and Privacy Policy.
+  // If the user is not authenticated, we display a "Sign In" button that opens a modal with sign-in options for Google and Apple.
+  // The modal includes buttons for Google and Apple sign-in, and it conditionally renders the Apple sign-in button only on Apple devices.
+  // The modal also includes a close button and links to the Privacy Policy and Terms of Service.
   return (
     <>
       <button 
@@ -207,10 +223,10 @@ export default function AuthButton() {
             
             <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Continue to Glide</h2>
             <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-              Sign in to save highlights, drop takes, and sync your account. 
+              Sign in to save highlights, drop takes, and sync your account. No credit card required.
             </p>
 
-            <div className="space-y-4">
+            <div className="space-y-4 w-full flex flex-col items-center">
               
               {isNative ? (
                 <button 
@@ -226,20 +242,22 @@ export default function AuthButton() {
                   Continue with Google
                 </button>
               ) : (
-                <div className="w-full flex justify-center [&>div]:w-full overflow-hidden rounded-2xl border border-gray-700 hover:border-gray-500 transition-colors">
+                
+                <div className="w-full flex justify-center">
                   <GoogleLogin
                     onSuccess={handleWebLoginSuccess}
                     onError={() => console.error('Google Web Form Error: Login Failed')}
                     theme="filled_black"
                     shape="rectangular"
                     size="large"
-                    width="100%"
                     text="continue_with"
+                    useOneTap={false} 
                   />
                 </div>
               )}
 
-              {isIOS && (
+              {/* RENDER CONDITION */}
+              {isAppleDevice && (
                 <button 
                   onClick={handleAppleLogin} 
                   className="flex items-center justify-center w-full py-3.5 px-4 rounded-2xl border border-gray-700 bg-transparent hover:bg-white/5 text-white font-medium transition-colors active:scale-[0.98]"
@@ -253,8 +271,9 @@ export default function AuthButton() {
 
             </div>
 
+            {/* === CHANGED: UPDATED ROUTING LINKS TO MATCH YOUR URLS === */}
             <p className="text-xs text-gray-500 mt-8 text-center">
-              By continuing you agree to our <Link href="#" className="text-gray-400 hover:text-white transition-colors underline decoration-gray-600 underline-offset-2">Terms of Service</Link> and <Link href="#" className="text-gray-400 hover:text-white transition-colors underline decoration-gray-600 underline-offset-2">Privacy Policy</Link>.
+              By continuing you agree to our <Link href="/privacy" className="text-gray-400 hover:text-white transition-colors underline decoration-gray-600 underline-offset-2">Privacy Policy</Link> and <Link href="/terms" className="text-gray-400 hover:text-white transition-colors underline decoration-gray-600 underline-offset-2">Terms of Service</Link>.
             </p>
 
           </div>
