@@ -168,19 +168,23 @@ export default function AuthButton() {
            await authenticateAppleWithServer(response.identityToken, fullName);
         }
       } else {
-        // If Apple JS API load initialization is incomplete on mobile web browsers, 
-        // fallback directly onto an explicit secure OAuth layout link stream.
+        // If web browser security parameters block popup messaging on an iPad,
+        // we bounce gracefully to the standard secure direct link channel.
         if ((window as any).AppleID) {
           try {
             const response = await (window as any).AppleID.auth.signIn();
-            const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
-            if (response.authorization?.id_token) {
+            if (response && response.authorization?.id_token) {
+               const fullName = response.user?.name ? `${response.user.name.firstName} ${response.user.name.lastName}` : undefined;
                await authenticateAppleWithServer(response.authorization.id_token, fullName);
+               return;
             }
           } catch (popupErr) {
-            window.location.href = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
+            console.warn("Popup blocked or context failure, using standard redirect:", popupErr);
           }
         }
+        
+        // Direct fallback link configuration
+        window.location.href = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
       }
     } catch (error) {
       console.error("Apple Login Error: ", error);
@@ -281,21 +285,18 @@ export default function AuthButton() {
                 </button>
               ) : (
                 
-                // This targets the absolute sub-root variables of the native iframe injection, 
-                // overriding the white layout mask directly from your global stylesheet layer.
-                <div className="w-[320px] h-[52px] rounded-full overflow-hidden border border-gray-700 bg-[#0F1117] flex justify-center items-center mix-blend-screen select-none">
-                  <div className="w-full scale-[1.01]">
-                    <GoogleLogin
-                      onSuccess={handleWebLoginSuccess}
-                      onError={() => console.error('Google Web Form Error: Login Failed')}
-                      theme="filled_black"
-                      shape="rectangular"
-                      size="large"
-                      width="320"
-                      text="continue_with"
-                      useOneTap={false} 
-                    />
-                  </div>
+                // Dropping shape="pill" removes the forced rectangular white background layout.
+                // We keep the container clean to allow standard session chip replacement.
+                <div className="shadow-lg rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 w-[320px]">
+                  <GoogleLogin
+                    onSuccess={handleWebLoginSuccess}
+                    onError={() => console.error('Google Web Form Error: Login Failed')}
+                    theme={resolvedTheme === 'dark' ? 'filled_black' : 'outline'}
+                    shape="pill"
+                    width="320"
+                    text="continue_with"
+                    useOneTap={false} 
+                  />
                 </div>
               )}
 

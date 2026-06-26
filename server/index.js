@@ -331,9 +331,10 @@ app.post('/api/auth/apple', async (req, res) => {
     const { token, name } = req.body;
 
     try {
-        // Cryptographically verify the JWT using Apple's public key endpoint
+        // We configure the audience verification block to accept both an array containing 
+        // your web Services ID and your strict mobile Bundle ID (com.glidesports.glide).
         const payload = await appleSignin.verifyIdToken(token, {
-            audience: APPLE_CLIENT_ID, 
+            audience: [APPLE_CLIENT_ID, 'com.glidesports.glide'], 
             ignoreExpiration: true,
         });
 
@@ -1243,4 +1244,3 @@ app.listen(PORT, () => {
         require('./scraper.js');
     }, 2000);
 });
-
