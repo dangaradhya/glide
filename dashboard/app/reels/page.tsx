@@ -714,8 +714,12 @@ function ReelsContent() {
                     )}
                   </div>
 
-                  {/* Lowered transition duration to 300ms and set ease-linear for a snappier visual reveal */}
-                  <div className={`absolute inset-0 z-10 transition-opacity duration-[300ms] pointer-events-none bg-black ${activeReelId === reel.id ? 'opacity-0 delay-[300ms] ease-linear' : 'opacity-100 delay-0'}`}>
+                  {/* Lowered transition duration to 230ms and set ease-linear for a snappier visual reveal */}
+                  <div className={`absolute inset-0 z-10 pointer-events-none bg-black ${
+                    (activeReelId === reel.id && (!isIOSBrowser || !isGlobalMuted))
+                      ? 'opacity-0 transition-opacity duration-[230ms] delay-[230ms] ease-linear'
+                      : 'opacity-100'
+                  }`}>
                     <img 
                       src={`https://i.ytimg.com/vi/${reel.video_id}/hqdefault.jpg`} 
                       alt={reel.title}
