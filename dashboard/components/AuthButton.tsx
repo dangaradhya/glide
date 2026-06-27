@@ -168,7 +168,6 @@ export default function AuthButton() {
            await authenticateAppleWithServer(response.identityToken, fullName);
         }
       } else {
-        // Completely removed popups, iframe event listeners, and Apple JS SDK dependencies.
         // We pass the current URL origin in the "state" variable so the backend knows exactly where to send us back!
         const currentOrigin = window.location.origin;
         const appleAuthUrl = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post&state=${encodeURIComponent(currentOrigin)}`;
@@ -261,11 +260,12 @@ export default function AuthButton() {
             <div className="space-y-4 w-full flex flex-col items-center">
               
               {isNative ? (
+                /* Native Google Button matched exactly to h-10 */
                 <button 
                   onClick={handleNativeLogin} 
-                  className="flex items-center justify-center w-[320px] py-3.5 px-4 rounded-full border border-gray-700 bg-transparent hover:bg-white/5 text-white font-medium transition-colors active:scale-[0.98]"
+                  className="flex items-center justify-center w-[320px] h-10 px-4 rounded-full border border-gray-700 bg-transparent hover:bg-white/5 text-white text-sm font-medium transition-colors active:scale-[0.98]"
                 >
-                  <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 mr-3" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
@@ -274,8 +274,8 @@ export default function AuthButton() {
                   Continue with Google
                 </button>
               ) : (
-                
-                <div className="shadow-lg rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 w-[320px]">
+                /* Web Google wrapper matching standard 40px layout */
+                <div className="shadow-lg rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 w-[320px] h-10">
                   <GoogleLogin
                     onSuccess={handleWebLoginSuccess}
                     onError={() => console.error('Google Web Form Error: Login Failed')}
@@ -288,13 +288,13 @@ export default function AuthButton() {
                 </div>
               )}
 
-              {/* RENDER CONDITION */}
+              {/* Apple Button adjusted to match standard h-10 (40px) height perfectly */}
               {isAppleDevice && (
                 <button 
                   onClick={handleAppleLogin} 
-                  className="flex items-center justify-center w-[320px] py-3.5 px-4 rounded-full border border-gray-700 bg-transparent hover:bg-white/5 text-white font-medium transition-colors active:scale-[0.98]"
+                  className="flex items-center justify-center w-[320px] h-10 px-4 rounded-full border border-gray-700 bg-transparent hover:bg-white/5 text-white text-sm font-medium transition-colors active:scale-[0.98]"
                 >
-                  <svg className="w-5 h-5 mr-3 mb-1 fill-white" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 mr-2.5 mb-0.5 fill-white" viewBox="0 0 24 24">
                     <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.17 2.24-.86 3.44-.8 1.48.05 2.75.69 3.48 1.83-3.13 1.76-2.58 5.76.28 6.84-.71 1.85-1.74 3.54-2.28 4.3zm-3.51-14.8c-.89.1-1.85-.4-2.5-1.15-.65-.79-.98-1.92-.81-2.92.93-.07 1.94.43 2.58 1.18.67.78.96 1.81.73 2.89z" />
                   </svg>
                   Continue with Apple

@@ -392,7 +392,6 @@ app.post('/api/auth/apple', async (req, res) => {
                 const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
                 const userData = { id: user.id, name: user.name, picture: user.picture };
                 
-                // === CHANGED: THE REDIRECT BRIDGE ===
                 // Instead of a broken script, we redirect the browser back to your app with the tokens!
                 const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
                 return res.redirect(redirectUrl);
