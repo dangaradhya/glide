@@ -66,18 +66,25 @@ function ReelsContent() {
   const targetReelId = searchParams.get('reelId');
 
   useEffect(() => {
-    // Platform detection. We check for a mobile OS user agent AND confirm
-    // we are NOT inside the Capacitor native shell by checking window.Capacitor.isNative.
-    // This correctly separates "iPhone/Android in Safari/Chrome" from "iPhone/Android in the Glide app".
-    const userAgent = navigator.userAgent; 
-    const isMobileOS = /iPhone|iPad|iPod|Android/i.test(userAgent);
+    const ua = navigator.userAgent; 
+    const isMobileOS = /iPhone|iPad|iPod|Android/i.test(ua);
+  
+    // iPads on iOS 13+ deliberately report as Macintosh to get desktop sites.
+    // The only reliable way to detect them is touch capability: a real Mac laptop
+    // or desktop will always report maxTouchPoints as 0 or 1. An iPad always
+    // reports 5 (five-finger multi-touch). This correctly separates Mac Chrome
+    // on a MacBook (maxTouchPoints = 0) from iPad Safari (maxTouchPoints = 5)
+    // and is not affected by the Capacitor native app at all.
+    const isIPadOS = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+  
     const isCapacitorApp = Capacitor.isNativePlatform();
     
-    if (isMobileOS && !isCapacitorApp) {
+    if ((isMobileOS || isIPadOS) && !isCapacitorApp) {
       setIsMobileBrowser(true); 
-
-      // If it's a mobile browser, check specifically if it's an iOS device
-      setIsIOSBrowser(/iPhone|iPad|iPod/i.test(userAgent));
+  
+      // isIOSBrowser now correctly includes: iPhone, old-style iPad UA,
+      // AND modern iPad that masquerades as Mac. Android stays excluded.
+      setIsIOSBrowser(/iPhone|iPad|iPod/i.test(ua) || isIPadOS);
     }
   }, []);
 
