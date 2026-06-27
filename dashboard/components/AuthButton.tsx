@@ -61,6 +61,14 @@ export default function AuthButton() {
     const urlToken = urlParams.get('token');
     const urlUser = urlParams.get('user');
 
+    // If we routed back from the Terms/Privacy page via the Back to App button, 
+    // pop the modal back open and clean the URL parameter.
+    const showLogin = urlParams.get('showLogin');
+    if (showLogin === 'true') {
+      setShowModal(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     if (urlToken && urlUser) {
       localStorage.setItem('glide_token', urlToken);
       localStorage.setItem('glide_user', decodeURIComponent(urlUser));
