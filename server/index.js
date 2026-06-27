@@ -388,13 +388,30 @@ app.post('/api/auth/apple', async (req, res) => {
             }
 
             if (user) {
-                // Returning Apple User
-                const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                const userData = { id: user.id, name: user.name, picture: user.picture };
-                
-                // Instead of a broken script, we redirect the browser back to your app with the tokens!
-                const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                return res.redirect(redirectUrl);
+                // If Apple sends us a fresh 'incomingName' payload (because the user reset their permissions),
+                // we intercept it and UPDATE their database row to overwrite the old anonymous garbage data!
+                if (incomingName) {
+                    db.run(`UPDATE users SET name = ?, picture = ?, email = ? WHERE id = ?`, 
+                    [finalName, defaultPicture, safeEmail, user.id], 
+                    (updateErr) => {
+                        if (updateErr) console.error("Failed to update upgraded Apple profile:", updateErr);
+                        
+                        const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                        // Pass the fresh new data back to the frontend
+                        const userData = { id: user.id, name: finalName, picture: defaultPicture };
+                        
+                        const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                        return res.redirect(redirectUrl);
+                    });
+                } else {
+                    // Standard returning user flow (No new name provided)
+                    // We generate a new Glide JWT token for the user and send them back to the frontend with their existing profile data.
+                    const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                    const userData = { id: user.id, name: user.name, picture: user.picture };
+                    
+                    const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                    return res.redirect(redirectUrl);
+                }
 
             } else {
                 // New Apple User
