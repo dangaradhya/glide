@@ -55,6 +55,22 @@ export default function AuthButton() {
       }
     } 
 
+    // When the Render backend redirects back to the frontend, it attaches the tokens to the URL.
+    // We catch them here, save them, clean the URL silently, and log the user in immediately.
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    const urlUser = urlParams.get('user');
+
+    if (urlToken && urlUser) {
+      localStorage.setItem('glide_token', urlToken);
+      localStorage.setItem('glide_user', decodeURIComponent(urlUser));
+      // Silently clean the URL to hide the tokens from the address bar
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setUser(JSON.parse(decodeURIComponent(urlUser)));
+      window.location.reload();
+      return; 
+    }
+
     const storedUser = localStorage.getItem('glide_user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
@@ -139,9 +155,7 @@ export default function AuthButton() {
   // The handleAppleLogin function is used to initiate the Apple Sign-In process. It calls the SignInWithApple plugin to authorize the user, 
   // retrieves the identity token and optional full name, and then calls authenticateAppleWithServer to verify the token with the backend.
   const handleAppleLogin = async () => {
-    // The handleAppleLogin function is used to initiate the Apple Sign-In process. It calls the SignInWithApple plugin to authorize the user,
     try {
-      // If the app is running on a native platform, we use the SignInWithApple plugin to authorize the user.
       if (isNative) {
         const { response } = await SignInWithApple.authorize({
           clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
@@ -154,31 +168,13 @@ export default function AuthButton() {
            await authenticateAppleWithServer(response.identityToken, fullName);
         }
       } else {
-        // By opening Apple's OAuth stream manually, we force Apple to POST the token 
-        // straight to your backend, bypassing all iPad/Safari JS execution errors.
-        const handleAppleWebMessage = (event: MessageEvent) => {
-          if (event.origin !== "https://glide-sports.onrender.com") return;
-          
-          // We listen for a message event from the backend server after Apple redirects back to it. If the event contains a token, 
-          // we store it in localStorage, update the user state, close the modal, and reload the page.
-          if (event.data && event.data.token) {
-            localStorage.setItem('glide_token', event.data.token);
-            localStorage.setItem('glide_user', JSON.stringify(event.data.user));
-            setUser(event.data.user);
-            setShowModal(false);
-            window.removeEventListener('message', handleAppleWebMessage);
-            window.location.reload();
-          }
-        };
+        // Completely removed popups, iframe event listeners, and Apple JS SDK dependencies.
+        // We pass the current URL origin in the "state" variable so the backend knows exactly where to send us back!
+        const currentOrigin = window.location.origin;
+        const appleAuthUrl = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post&state=${encodeURIComponent(currentOrigin)}`;
         
-        window.addEventListener('message', handleAppleWebMessage);
-        
-        // This explicitly commands Apple to open a secure authorization window, 
-        // authenticate with TouchID, and immediately execute a POST to Render.
-        const appleAuthUrl = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post`;
-        
-        // Browsers allow this popup perfectly because it is tied directly to an onClick event.
-        window.open(appleAuthUrl, 'AppleLogin', 'width=400,height=600');
+        // Redirect the current tab entirely.
+        window.location.href = appleAuthUrl;
       }
     } catch (error) {
       console.error("Apple Login Error: ", error);
@@ -279,8 +275,6 @@ export default function AuthButton() {
                 </button>
               ) : (
                 
-                // Dropping shape="pill" removes the forced rectangular white background layout.
-                // We keep the container clean to allow standard session chip replacement.
                 <div className="shadow-lg rounded-full overflow-hidden border border-gray-200 dark:border-gray-700 w-[320px]">
                   <GoogleLogin
                     onSuccess={handleWebLoginSuccess}

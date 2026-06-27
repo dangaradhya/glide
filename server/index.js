@@ -381,19 +381,22 @@ app.post('/api/auth/apple', async (req, res) => {
         db.get(`SELECT id, name, picture FROM users WHERE google_id = ?`, [unifiedProviderId], (err, user) => {
             if (err) return res.status(500).send("Database error");
 
+            // Secure Open-Redirect Protection (Allows you to test on localhost seamlessly)
+            let targetOrigin = 'https://glidesports.app';
+            if (req.body.state === 'http://localhost:3000' || req.body.state === 'https://www.glidesports.app') {
+                targetOrigin = req.body.state;
+            }
+
             if (user) {
                 // Returning Apple User
                 const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                const userData = { token: glideToken, user: { id: user.id, name: user.name, picture: user.picture } };
+                const userData = { id: user.id, name: user.name, picture: user.picture };
                 
-                // Instead of printing raw text, we send an active script. This tells the browser 
-                // to shoot the credentials back to your frontend tab and close the window!
-                return res.send(`
-                    <script>
-                        window.opener.postMessage(${JSON.stringify(userData)}, "*");
-                        window.close();
-                    </script>
-                `);
+                // === CHANGED: THE REDIRECT BRIDGE ===
+                // Instead of a broken script, we redirect the browser back to your app with the tokens!
+                const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                return res.redirect(redirectUrl);
+
             } else {
                 // New Apple User
                 db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
@@ -401,15 +404,11 @@ app.post('/api/auth/apple', async (req, res) => {
                     if (insertErr) return res.status(500).send("Failed to create user");
                     
                     const glideToken = jwt.sign({ userId: this.lastID, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                    const userData = { token: glideToken, user: { id: this.lastID, name: finalName, picture: defaultPicture } };
+                    const userData = { id: this.lastID, name: finalName, picture: defaultPicture };
                     
-                    // Send the same script bridge to handle new user registration paths
-                    return res.send(`
-                        <script>
-                            window.opener.postMessage(${JSON.stringify(userData)}, "*");
-                            window.close();
-                        </script>
-                    `);
+                    // Same redirect bridge for new users
+                    const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                    return res.redirect(redirectUrl);
                 });
             }
         });
