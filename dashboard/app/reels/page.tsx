@@ -638,8 +638,8 @@ function ReelsContent() {
           {reels.map((reel, index) => {
             
             // THE MOBILE PROMO CARD INTERCEPTOR 
-            // If we are on a mobile browser and hit the 3rd reel (index 2), inject the promo card.
-            if (isMobileBrowser && index === 2) {
+            // If we are on a mobile browser and hit the 2nd reel (index 1), inject the promo card.
+            if (isMobileBrowser && index === 1) {
               return (
                 <div 
                   key="promo-card" 
@@ -669,7 +669,7 @@ function ReelsContent() {
             }
 
             // Block rendering of anything past the promo card on mobile browsers so they can't scroll past it
-            if (isMobileBrowser && index > 2) return null;
+            if (isMobileBrowser && index > 1) return null;
 
             return (
               // Included the data-video-id attribute onto your wrapping map block container to target scroll focus.
