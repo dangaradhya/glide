@@ -24,22 +24,30 @@ jobs:
           npm ci
           npm run build
 
-      # Sync and patch the Podfile to strip plugin code-signing constraints
+      # Sync and safely patch the existing post_install hook inside the Podfile
       - name: Sync Capacitor iOS Project
         run: |
           cd dashboard
           npx cap add ios || true
           npx cap sync ios
           
-          echo "post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              target.build_configurations.each do |config|
-                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-              end
-            end
-          end" >> ios/App/Podfile
+          node -e "
+          const fs = require('fs');
+          const path = 'ios/App/Podfile';
+          let content = fs.readFileSync(path, 'utf8');
           
-          # Run pod install again to apply the configuration patch
+          const searchStr = 'target.build_configurations.each do |config|';
+          const replacement = searchStr + \"\\n      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'\";
+          
+          if (content.includes(searchStr)) {
+            content = content.replace(searchStr, replacement);
+            fs.writeFileSync(path, content, 'utf8');
+            console.log('Successfully patched Podfile with code-signing overrides.');
+          } else {
+            console.error('Could not find target build configurations loop in Podfile.');
+          }
+          "
+          
           cd ios/App
           pod install
 
