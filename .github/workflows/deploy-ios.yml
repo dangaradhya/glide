@@ -70,6 +70,7 @@ jobs:
             -configuration Release \
             clean archive \
             -archivePath App.xcarchive \
+            -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM=$TEAM_ID \
             -allowProvisioningUpdates \
             -authenticationKeyID $API_KEY_ID \
