@@ -28,6 +28,7 @@ jobs:
         run: |
           # Sync from inside the dashboard folder
           cd dashboard
+          npx cap add ios || true
           npx cap sync ios
 
       - name: Install Apple Certificate and Provisioning Profile
