@@ -49,6 +49,9 @@ jobs:
           security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           
+          security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s $KEYCHAIN_PATH
+          
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
@@ -100,8 +103,6 @@ jobs:
               <string>$TEAM_ID</string>
               <key>signingStyle</key>
               <string>manual</string>
-              <key>signingCertificate</key>
-              <string>Apple Distribution</string>
               <key>provisioningProfiles</key>
               <dict>
                   <key>com.glidesports.glide</key>
@@ -114,8 +115,7 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath App.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
-            -exportPath output \
-            -signingCertificate "Apple Distribution"
+            -exportPath output
           
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
