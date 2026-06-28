@@ -28,32 +28,18 @@ jobs:
           npm ci
           npm run build
 
-      - name: Auto-Increment iOS Build Number
-        run: |
-          cd dashboard
-          node -e "
-          const fs = require('fs');
-          const path = 'capacitor.config.json';
-          let config = {};
-          
-          if (fs.existsSync(path)) {
-            config = JSON.parse(fs.readFileSync(path, 'utf8'));
-          } else {
-            config = { appId: 'com.glidesports.glide', appName: 'Glide', webDir: 'out' };
-          }
-          
-          if (!config.ios) config.ios = {};
-          config.ios.build = '${{ github.run_number }}';
-          
-          fs.writeFileSync(path, JSON.stringify(config, null, 2), 'utf8');
-          console.log('Successfully stamped build number: ${{ github.run_number }}');
-          "
-
       - name: Sync Capacitor iOS Project
         run: |
           cd dashboard
           npx cap add ios || true
           npx cap sync ios
+
+      # Force the native project files to match the ever-increasing GitHub Run number
+      - name: Auto-Increment Native iOS Build Version
+        run: |
+          cd dashboard/ios/App
+          xcrun agvtool what-version
+          xcrun agvtool new-version -all ${{ github.run_number }}
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
