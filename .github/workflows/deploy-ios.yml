@@ -17,18 +17,18 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install NPM Dependencies
-        run: npm ci
-
-      - name: Build Next.js Web App
-        env:
-          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
-          NEXT_PUBLIC_APPLE_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_APPLE_CLIENT_ID }}
-          NEXT_PUBLIC_APPLE_APP_STORE_ID: ${{ secrets.NEXT_PUBLIC_APPLE_APP_STORE_ID }}
-        run: npm run build
+      # Move into the dashboard folder immediately
+      - name: Install Dependencies and Build
+        run: |
+          cd dashboard
+          npm ci
+          npm run build
 
       - name: Sync Capacitor iOS Project
-        run: npx cap sync ios
+        run: |
+          # Sync from inside the dashboard folder
+          cd dashboard
+          npx cap sync ios
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
@@ -47,28 +47,28 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
           security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychains -d user -s $KEYCHAIN_PATH
-
+          
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
       - name: Build and Archive App
         run: |
-          cd ios/App
+          # Point to the ios folder inside dashboard
+          cd dashboard/ios/App
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release clean archive -archivePath App.xcarchive
 
       - name: Export IPA File
         run: |
-          cd ios/App
+          cd dashboard/ios/App
           xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
         with:
-          app-path: 'ios/App/output/App.ipa'
+          # Point to the output inside the dashboard folder
+          app-path: 'dashboard/ios/App/output/App.ipa'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
