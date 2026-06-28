@@ -46,7 +46,7 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security import $certificate_path -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
@@ -55,15 +55,12 @@ jobs:
       - name: Build and Archive App
         env:
           TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
-          API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
-          API_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
-          API_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$API_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
-
           cd dashboard/ios/App
-          
+
+          PROFILE_NAME=$(strings ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | grep -A 1 "<key>Name</key>" | tail -n 1 | sed -e 's/<string>//' -e 's/<\/string>//' | xargs)
+          echo "Baking explicit manual parameters: $PROFILE_NAME"
+
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
@@ -71,16 +68,51 @@ jobs:
             -archivePath App.xcarchive \
             -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM=$TEAM_ID \
-            -allowProvisioningUpdates \
-            -authenticationKeyID $API_KEY_ID \
-            -authenticationKeyIssuerID $API_ISSUER_ID \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            ONLY_ACTIVE_ARCH=NO \
+            "CODE_SIGN_IDENTITY[sdk=iphoneos*]=Apple Distribution" \
+            "CODE_SIGNING_ALLOWED[sdk=iphoneos*]=YES" \
+            "CODE_SIGNING_REQUIRED[sdk=iphoneos*]=YES" \
+            "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]=$PROFILE_NAME"
 
       - name: Export IPA File
+        env:
+          TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
         run: |
           cd dashboard/ios/App
-          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
+          
+          PROFILE_NAME=$(strings ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | grep -A 1 "<key>Name</key>" | tail -n 1 | sed -e 's/<string>//' -e 's/<\/string>//' | xargs)
 
+          cat <<EOF > ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>compileBitcode</key>
+              <false/>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>teamID</key>
+              <string>$TEAM_ID</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.glidesports.glide</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
+          
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
         with:
