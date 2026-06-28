@@ -26,7 +26,6 @@ jobs:
 
       - name: Sync Capacitor iOS Project
         run: |
-          # Sync from inside the dashboard folder
           cd dashboard
           npx cap add ios || true
           npx cap sync ios
@@ -60,7 +59,14 @@ jobs:
         run: |
           cd dashboard/ios/App
           ls -la
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release clean archive -archivePath App.xcarchive DEVELOPMENT_TEAM=$TEAM_ID
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            clean archive \
+            -archivePath App.xcarchive \
+            DEVELOPMENT_TEAM=$TEAM_ID \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution"
 
       - name: Export IPA File
         run: |
@@ -70,7 +76,6 @@ jobs:
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
         with:
-          # Point to the output inside the dashboard folder
           app-path: 'dashboard/ios/App/output/App.ipa'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
