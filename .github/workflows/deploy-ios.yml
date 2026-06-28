@@ -33,14 +33,20 @@ jobs:
           cd dashboard
           node -e "
           const fs = require('fs');
-          const path = 'ios/App/App/capacitor.config.json';
-          let config = JSON.parse(fs.readFileSync(path));
-          if (!config.ios) config.ios = {};
+          const path = 'capacitor.config.json';
+          let config = {};
           
+          if (fs.existsSync(path)) {
+            config = JSON.parse(fs.readFileSync(path, 'utf8'));
+          } else {
+            config = { appId: 'com.glidesports.glide', appName: 'Glide', webDir: 'out' };
+          }
+          
+          if (!config.ios) config.ios = {};
           config.ios.build = '${{ github.run_number }}';
           
-          fs.writeFileSync(path, JSON.stringify(config, null, 2));
-          console.log('Build number auto-set to: ${{ github.run_number }}');
+          fs.writeFileSync(path, JSON.stringify(config, null, 2), 'utf8');
+          console.log('Successfully stamped build number: ${{ github.run_number }}');
           "
 
       - name: Sync Capacitor iOS Project
