@@ -28,6 +28,21 @@ jobs:
           npm ci
           npm run build
 
+      - name: Auto-Increment iOS Build Number
+        run: |
+          cd dashboard
+          node -e "
+          const fs = require('fs');
+          const path = 'capacitor.config.json';
+          let config = JSON.parse(fs.readFileSync(path));
+          if (!config.ios) config.ios = {};
+          
+          config.ios.build = '${{ github.run_number }}';
+          
+          fs.writeFileSync(path, JSON.stringify(config, null, 2));
+          console.log('Build number auto-set to: ${{ github.run_number }}');
+          "
+
       - name: Sync Capacitor iOS Project
         run: |
           cd dashboard
@@ -67,7 +82,8 @@ jobs:
           cd dashboard/ios/App
 
           PROFILE_NAME=$(strings ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | grep -A 1 "<key>Name</key>" | tail -n 1 | sed -e 's/<string>//' -e 's/<\/string>//' | xargs)
-          
+          echo "Baking explicit manual parameters: $PROFILE_NAME"
+
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
