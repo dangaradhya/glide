@@ -55,15 +55,17 @@ jobs:
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
       - name: Build and Archive App
+        env:
+          TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
         run: |
           cd dashboard/ios/App
           ls -la
-          xcodebuild -project App.xcodeproj -scheme App -configuration Release clean archive -archivePath App.xcarchive
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release clean archive -archivePath App.xcarchive DEVELOPMENT_TEAM=$TEAM_ID
 
       - name: Export IPA File
         run: |
           cd dashboard/ios/App
-          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist App/ExportOptions.plist -exportPath output
+          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
