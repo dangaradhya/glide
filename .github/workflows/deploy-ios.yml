@@ -24,11 +24,24 @@ jobs:
           npm ci
           npm run build
 
+      # Sync and patch the Podfile to strip plugin code-signing constraints
       - name: Sync Capacitor iOS Project
         run: |
           cd dashboard
           npx cap add ios || true
           npx cap sync ios
+          
+          echo "post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              target.build_configurations.each do |config|
+                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+              end
+            end
+          end" >> ios/App/Podfile
+          
+          # Run pod install again to apply the configuration patch
+          cd ios/App
+          pod install
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
@@ -56,13 +69,7 @@ jobs:
       - name: Build and Archive App
         env:
           TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
-          API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
-          API_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
-          API_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$API_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
-
           cd dashboard/ios/App
           
           xcodebuild -workspace App.xcworkspace \
@@ -72,10 +79,8 @@ jobs:
             -archivePath App.xcarchive \
             -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM=$TEAM_ID \
-            -allowProvisioningUpdates \
-            -authenticationKeyID $API_KEY_ID \
-            -authenticationKeyIssuerID $API_ISSUER_ID \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution"
 
       - name: Export IPA File
         run: |
