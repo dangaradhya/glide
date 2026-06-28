@@ -81,8 +81,8 @@ jobs:
       - name: Export IPA File
         run: |
           cd dashboard/ios/App
-          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
-
+          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist App/ExportOptions.plist -exportPath output
+          
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
         with:
