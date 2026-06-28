@@ -23,30 +23,11 @@ jobs:
           npm ci
           npm run build
 
-      # Sync and force-patch all configuration files on the runner layer
-      - name: Sync and Patch Capacitor iOS Project
+      - name: Sync Capacitor iOS Project
         run: |
           cd dashboard
           npx cap add ios || true
           npx cap sync ios
-          
-          sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' ios/App/App.xcodeproj/project.pbxproj
-          
-          node -e "
-          const fs = require('fs');
-          const path = 'ios/App/Podfile';
-          let content = fs.readFileSync(path, 'utf8');
-          const searchStr = 'target.build_configurations.each do |config|';
-          const replacement = searchStr + \"\\n      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'\";
-          if (content.includes(searchStr)) {
-            content = content.replace(searchStr, replacement);
-            fs.writeFileSync(path, content, 'utf8');
-            console.log('Successfully patched Podfile.');
-          }
-          "
-          
-          cd ios/App
-          pod install
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
@@ -74,57 +55,32 @@ jobs:
       - name: Build and Archive App
         env:
           TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
+          API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          API_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
         run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$API_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
+
           cd dashboard/ios/App
-
-          PROFILE_NAME=\$(security error_check 2>/dev/null || strings ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | grep -A 1 "<key>Name</key>" | tail -n 1 | sed -e 's/<string>//' -e 's/<\/string>//' | xargs)
-          echo "Compiling with manual profile: \$PROFILE_NAME"
-
+          
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             clean archive \
             -archivePath App.xcarchive \
             -destination 'generic/platform=iOS' \
-            DEVELOPMENT_TEAM=\$TEAM_ID \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="\$PROFILE_NAME"
+            DEVELOPMENT_TEAM=$TEAM_ID \
+            -allowProvisioningUpdates \
+            -authenticationKeyID $API_KEY_ID \
+            -authenticationKeyIssuerID $API_ISSUER_ID \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
 
       - name: Export IPA File
-        env:
-          TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
         run: |
           cd dashboard/ios/App
-          
-          PROFILE_NAME=\$(security error_check 2>/dev/null || strings ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision | grep -A 1 "<key>Name</key>" | tail -n 1 | sed -e 's/<string>//' -e 's/<\/string>//' | xargs)
-
-          cat <<EOF > ExportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>compileBitcode</key>
-              <false/>
-              <key>method</key>
-              <string>app-store-connect</string>
-              <key>teamID</key>
-              <string>$TEAM_ID</string>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>signingCertificate</key>
-              <string>Apple Distribution</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>com.glidesports.glide</key>
-                  <string>\$PROFILE_NAME</string>
-              </dict>
-          </dict>
-          </plist>
-          EOF
-
           xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
-          
+
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
         with:
