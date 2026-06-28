@@ -72,6 +72,8 @@ jobs:
             -archivePath App.xcarchive \
             -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM=$TEAM_ID \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             -allowProvisioningUpdates \
             -authenticationKeyID $API_KEY_ID \
             -authenticationKeyIssuerID $API_ISSUER_ID \
