@@ -56,14 +56,14 @@ jobs:
 
       - name: Build and Archive App
         run: |
-          # Point to the ios folder inside dashboard
           cd dashboard/ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release clean archive -archivePath App.xcarchive
+          ls -la
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release clean archive -archivePath App.xcarchive
 
       - name: Export IPA File
         run: |
           cd dashboard/ios/App
-          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
+          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist App/ExportOptions.plist -exportPath output
 
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
