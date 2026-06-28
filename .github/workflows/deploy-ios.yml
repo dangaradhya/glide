@@ -34,6 +34,11 @@ jobs:
           npx cap add ios || true
           npx cap sync ios
 
+      - name: Generate App Icons on Runner
+        run: |
+          cd dashboard
+          npx @capacitor/assets generate --ios
+
       # Force the native project files to match the ever-increasing GitHub Run number
       - name: Auto-Increment Native iOS Build Version
         run: |
