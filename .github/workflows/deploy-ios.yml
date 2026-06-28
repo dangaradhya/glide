@@ -17,6 +17,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
       - name: Install Dependencies and Build
         run: |
           cd dashboard
@@ -95,19 +100,19 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-              <key>compileBitcode</key>
-              <false/>
               <key>method</key>
-              <string>app-store-connect</string>
+              <string>app-store</string>
               <key>teamID</key>
               <string>$TEAM_ID</string>
-              <key>signingStyle</key>
-              <string>manual</string>
               <key>provisioningProfiles</key>
               <dict>
                   <key>com.glidesports.glide</key>
                   <string>$PROFILE_NAME</string>
               </dict>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>compileBitcode</key>
+              <false/>
           </dict>
           </plist>
           EOF
