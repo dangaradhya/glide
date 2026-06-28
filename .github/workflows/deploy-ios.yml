@@ -17,7 +17,6 @@ jobs:
         with:
           node-version: '22'
 
-      # Move into the dashboard folder immediately
       - name: Install Dependencies and Build
         run: |
           cd dashboard
@@ -59,7 +58,7 @@ jobs:
           TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
         run: |
           cd dashboard/ios/App
-
+          
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
@@ -67,16 +66,7 @@ jobs:
             -archivePath App.xcarchive \
             -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM=$TEAM_ID \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            ONLY_ACTIVE_ARCH=NO \
-            -allowProvisioningUpdates \
-            "CODE_SIGN_IDENTITY[sdk=iphoneos*]=Apple Distribution" \
-            "CODE_SIGNING_ALLOWED[sdk=iphoneos*]=YES" \
-            "CODE_SIGNING_REQUIRED[sdk=iphoneos*]=YES"
+            CODE_SIGN_IDENTITY="Apple Distribution"
 
       - name: Export IPA File
         env:
@@ -114,11 +104,7 @@ jobs:
           </plist>
           EOF
 
-          xcodebuild -exportArchive \
-            -archivePath App.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath output \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+          xcodebuild -exportArchive -archivePath App.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath output
           
       - name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v1
