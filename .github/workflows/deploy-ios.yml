@@ -24,32 +24,12 @@ jobs:
           npm ci
           npm run build
 
-      # Sync and safely patch the existing post_install hook inside the Podfile
+      # Return back to native Capacitor 7 alignment
       - name: Sync Capacitor iOS Project
         run: |
           cd dashboard
           npx cap add ios || true
           npx cap sync ios
-          
-          node -e "
-          const fs = require('fs');
-          const path = 'ios/App/Podfile';
-          let content = fs.readFileSync(path, 'utf8');
-          
-          const searchStr = 'target.build_configurations.each do |config|';
-          const replacement = searchStr + \"\\n      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'\";
-          
-          if (content.includes(searchStr)) {
-            content = content.replace(searchStr, replacement);
-            fs.writeFileSync(path, content, 'utf8');
-            console.log('Successfully patched Podfile with code-signing overrides.');
-          } else {
-            console.error('Could not find target build configurations loop in Podfile.');
-          }
-          "
-          
-          cd ios/App
-          pod install
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
@@ -79,7 +59,7 @@ jobs:
           TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM_ID }}
         run: |
           cd dashboard/ios/App
-          
+
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
@@ -88,7 +68,15 @@ jobs:
             -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM=$TEAM_ID \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution"
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            ONLY_ACTIVE_ARCH=NO \
+            -allowProvisioningUpdates \
+            "CODE_SIGN_IDENTITY[sdk=iphoneos*]=Apple Distribution" \
+            "CODE_SIGNING_ALLOWED[sdk=iphoneos*]=YES" \
+            "CODE_SIGNING_REQUIRED[sdk=iphoneos*]=YES"
 
       - name: Export IPA File
         run: |
