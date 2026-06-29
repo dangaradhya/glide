@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Glide</string>
+    <string name="title_activity_main">Glide</string>
+    <string name="package_name">com.glidesports.glide</string>
+    <string name="custom_url_scheme">com.glidesports.glide</string>
+    <string name="server_client_id">911833440641-qmov0dpnu3hb4ec53gojc00tgthtiq2p.apps.googleusercontent.com</string>
+</resources>
