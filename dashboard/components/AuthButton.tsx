@@ -33,6 +33,9 @@ export default function AuthButton() {
   const isAppleSystem = /Macintosh|iPhone|iPad|iPod/i.test(userAgentString);
   const isStrictlyAppleDevice = isAppleSystem && !/Android|Windows|Linux/i.test(userAgentString);
 
+  // Static cross-render flag to prevent Capacitor from throwing an initialization loop error on iOS
+  const [isGoogleInitialized, setIsGoogleInitialized] = useState(false);
+
   useEffect(() => {
     setMounted(true);
 
@@ -40,16 +43,23 @@ export default function AuthButton() {
     const nativePlatform = Capacitor.isNativePlatform();
     setIsNative(nativePlatform);
     
-    setIsAppleDevice(isStrictlyAppleDevice);
+    // If running inside Capacitor natively on iOS, it is ALWAYS an Apple device layer,
+    // bypassing masqueraded user-agent string checks that report iPadOS as a desktop Mac.
+    if (nativePlatform && Capacitor.getPlatform() === 'ios') {
+      setIsAppleDevice(true);
+    } else {
+      setIsAppleDevice(isStrictlyAppleDevice);
+    }
     
     // Initialize GoogleAuth for native platforms. This is necessary for handling Google sign-in in Capacitor apps.
-    if (nativePlatform) {
+    if (nativePlatform && !isGoogleInitialized) {
       try {
         GoogleAuth.initialize({
           clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
           scopes: ['profile', 'email'],
           grantOfflineAccess: true,
         });
+        setIsGoogleInitialized(true);
       } catch (e) {
         console.error("Capacitor Init Error: ", e);
       }
@@ -83,7 +93,7 @@ export default function AuthButton() {
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
-  }, [isStrictlyAppleDevice]);
+  }, [isStrictlyAppleDevice, isGoogleInitialized]);
 
   // The authenticateWithServer function sends the Google ID token to the backend server for verification. If successful, it stores 
   // the returned token and user data in localStorage and updates the user state.
@@ -165,9 +175,11 @@ export default function AuthButton() {
   const handleAppleLogin = async () => {
     try {
       if (isNative) {
+        // Native apple authentication expects standard empty strings for client variables,
+        // as credentials map strictly to the binary bundle signature.
         const { response } = await SignInWithApple.authorize({
-          clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
-          redirectURI: 'https://glide-sports.onrender.com/api/auth/apple',
+          clientId: 'com.glidesports.glide',
+          redirectURI: '',
           scopes: 'email name',
         });
         
