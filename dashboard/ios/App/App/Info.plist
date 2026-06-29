@@ -37,6 +37,11 @@
             </array>
         </dict>
     </array>
+    <key>packageClassList</key>
+    <array>
+        <string>SignInWithApple</string>
+        <string>GoogleAuth</string>
+    </array>
     <key>UILaunchStoryboardName</key>
     <string>LaunchScreen</string>
     <key>UIMainStoryboardFile</key>
