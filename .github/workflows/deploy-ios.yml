@@ -34,6 +34,11 @@ jobs:
           npx cap add ios || true
           npx cap sync ios
 
+      - name: Install CocoaPods and Generate Workspace
+        run: |
+          cd dashboard/ios/App
+          pod install
+
       - name: Generate App Icons on Runner
         run: |
           cd dashboard
