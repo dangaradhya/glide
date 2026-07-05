@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files (NEVER commit your local api secrets)
+.env*.local
+.env
 
 # vercel
 .vercel
@@ -40,5 +41,28 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# mobile native platforms
+# ==========================================
+# MOBILE NATIVE PLATFORMS
+# ==========================================
+
+# Android specific ignores
 /.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/.idea/
+*.iml
+
+# iOS specific ignores
+/ios/App/build/
+/ios/App/DerivedData/
+/ios/App/.xcworkspace/
+/ios/App/Pods/
+/ios/App/Podfile.lock
+/ios/App/App/public/
+
+# Keep native IDE user states hidden from git
+*.xcuserdata
+*.mode1v3
+*.mode2v3
+*.perspectivev3
