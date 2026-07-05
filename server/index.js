@@ -328,20 +328,8 @@ app.post('/api/auth/google', async (req, res) => {
             }
         });
     } catch (error) {
-        // --- HIGHLIGHTED CHANGE: DEEP SPECIFIC ERROR TRACING ---
-        console.error("❌ CRITICAL REDIRECT OAUTH ERROR ENVELOPE:", {
-            message: error.message,
-            stack: error.stack,
-            // Google's library nesting often hides the true API response here
-            googleResponseBody: error.response ? error.response.data : "No nested response body"
-        });
-
-        // Send the real inner error text straight to the white screen so we see it on your phone instantly
-        const errorDetails = error.response && error.response.data 
-            ? JSON.stringify(error.response.data) 
-            : error.message;
-
-        res.status(401).send(`Authentication failed. Exact error details: ${errorDetails}`);
+        console.error("Google Auth Error:", error);
+        res.status(401).json({ error: 'Invalid Google token' });
     }
 });
 
@@ -358,7 +346,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
             code: code,
             client_id: GOOGLE_CLIENT_ID,
             client_secret: GOOGLE_CLIENT_SECRET,
-            redirectUri: 'https://glide-sports.onrender.com/api/auth/google/callback'
+            redirect_uri: 'https://glide-sports.onrender.com/api/auth/google/callback'
         });
 
         // Set the credentials on the client context so verifyIdToken can read it securely
@@ -388,9 +376,8 @@ app.get('/api/auth/google/callback', async (req, res) => {
                 const glideToken = jwt.sign({ userId: user.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
                 const userData = { id: user.id, name, picture };
                 
-                // We redirect the user back to the frontend with their new Glide JWT token and profile data encoded in the URL.
-                const redirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                return res.redirect(redirectUrl);
+                const finalRedirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                return res.redirect(finalRedirectUrl);
             } else {
                 // New user registration flow
                 db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
@@ -400,13 +387,14 @@ app.get('/api/auth/google/callback', async (req, res) => {
                     const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
                     const userData = { id: this.lastID, name, picture };
                     
-                    const redirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                    return res.redirect(redirectUrl);
+                    const finalRedirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                    return res.redirect(finalRedirectUrl);
                 });
             }
         });
     } catch (error) {
         console.error("Redirect Flow Verification Error:", error);
+        Sentry.captureException(error);
         res.status(401).send("Failed to securely exchange tokens with Google's verification clusters.");
     }
 });
