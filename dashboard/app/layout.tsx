@@ -56,8 +56,16 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       {/* Added light/dark default background and text colors, plus a smooth CSS transition */}
-      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-white">
+      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-white pt-[40px] relative">
         
+        {/* GLOBAL MOBILE APP LAUNCH STICKY BANNER */}
+        <div className="absolute top-0 left-0 w-full h-[40px] bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white z-[99999] flex items-center justify-center px-4 shadow-md text-xs sm:text-sm font-semibold tracking-wide select-none">
+          <span className="flex items-center gap-2">
+            <span className="inline-block animate-pulse w-2 h-2 rounded-full bg-green-400"></span>
+            Mobile App coming soon to iOS & Android!
+          </span>
+        </div>
+
         {/* Wrapped the entire application in your new theme Providers */}
         <Providers>
           <GoogleOAuthProvider clientId={clientId}>

@@ -648,23 +648,20 @@ function ReelsContent() {
                   data-id="-1" // <-- Explicitly set to -1 to safely trigger the pause logic
                   className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative bg-black"
                 >
+                  {/* Reconfigured for app pre-launch footprint */}
                   <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-black via-purple-900/40 to-black border-t border-purple-500/30">
                     <div className="bg-purple-600/20 p-6 rounded-full mb-6 border border-purple-500/50">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <h2 className="text-3xl font-bold text-white mb-3 drop-shadow-md">Get the Glide App</h2>
-                    <p className="text-gray-400 mb-8 max-w-xs leading-relaxed">Experience flawless playback, instant highlights, and zero interruptions.</p>
-                    <a 
-                      href={storeLink} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 px-10 rounded-full text-lg shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all active:scale-95 z-50"
-                    >
-                      {/* DYNAMIC STORE BUTTON TEXT */}
-                      {isIOSBrowser ? 'Open in App Store' : 'Open in Play Store'}
-                    </a>
+                    <h2 className="text-3xl font-bold text-white mb-3 drop-shadow-md">Glide Mobile</h2>
+                    <p className="text-gray-400 mb-8 max-w-xs leading-relaxed">Flawless background playback, instant push highlights, and premium media viewing metrics are on the way.</p>
+                    
+                    {/* Updated button element to behave as a sleek, non-clickable launch indicator */}
+                    <div className="bg-purple-600/30 border border-purple-500/50 text-purple-300 font-bold py-3.5 px-8 rounded-full text-base tracking-wide shadow-inner select-none cursor-default">
+                      {isIOSBrowser ? 'Coming Soon to Apple TestFlight' : 'Coming Soon to Google Play'}
+                    </div>
                   </div>
                 </div>
               );
