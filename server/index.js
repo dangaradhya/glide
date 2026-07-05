@@ -328,6 +328,71 @@ app.post('/api/auth/google', async (req, res) => {
     }
 });
 
+// GET route for Google OAuth callback (for web-based flows)
+app.get('/api/auth/google/callback', async (req, res) => {
+    // Google passes the verification string inside the 'code' parameter, 
+    // and our frontend home origin inside the 'state' parameter.
+    const { code, state } = req.query;
+
+    if (!code) {
+        return res.status(400).send("Authentication code missing from redirect stream.");
+    }
+
+    try {
+        // Trade the single-use code for real account tokens
+        // This must pass your exact whitelisted callback URL as a confirmation key.
+        const { tokens } = await googleClient.getToken({
+            code,
+            redirectUri: 'https://glide-sports.onrender.com/api/auth/google/callback'
+        });
+
+        // Cryptographically open the ID Token packet to extract user fields
+        const ticket = await googleClient.verifyIdToken({
+            idToken: tokens.id_token,
+            audience: GOOGLE_CLIENT_ID,
+        });
+        
+        const payload = ticket.getPayload();
+        const { sub: google_id, email, name, picture } = payload;
+
+        // Secure fallback origin protection to handle local testing environments safely
+        let targetFrontendOrigin = 'https://glidesports.app';
+        if (state === 'http://localhost:3000' || state === 'https://www.glidesports.app') {
+            targetFrontendOrigin = state;
+        }
+
+        // 3. Match profile matching data inside our SQLite users database
+        db.get(`SELECT id FROM users WHERE google_id = ?`, [google_id], (err, user) => {
+            if (err) return res.status(500).send("Database error processing profile lookup.");
+
+            if (user) {
+                // Existing user flow
+                const glideToken = jwt.sign({ userId: user.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
+                const userData = { id: user.id, name, picture };
+                
+                // Pack the credentials tightly into url parameters and slide the user back to the Next.js home screen layout
+                const redirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                return res.redirect(redirectUrl);
+            } else {
+                // New user registration flow
+                db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
+                [google_id, email, name, picture], function(insertErr) {
+                    if (insertErr) return res.status(500).send("Failed to save fresh user profile metadata.");
+                    
+                    const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
+                    const userData = { id: this.lastID, name, picture };
+                    
+                    const redirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
+                    return res.redirect(redirectUrl);
+                });
+            }
+        });
+    } catch (error) {
+        console.error("Redirect Flow Verification Error:", error);
+        res.status(401).send("Failed to securely exchange tokens with Google's verification clusters.");
+    }
+});
+
 // Apple requires this parallel route. It verifies the identity token cryptographically
 // against Apple's public servers, avoiding the need for manual API keys.
 app.post('/api/auth/apple', async (req, res) => {
