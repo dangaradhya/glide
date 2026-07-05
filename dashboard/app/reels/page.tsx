@@ -606,7 +606,7 @@ function ReelsContent() {
     <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col">
       
       {/* Desktop Navigation Bar (Hidden on Mobile) */}
-      <div className="absolute top-0 w-full z-50 p-6 hidden md:flex justify-center pointer-events-none transition-all">
+      <div className="absolute top-10 w-full z-50 p-6 hidden md:flex justify-center pointer-events-none transition-all">
         <div className="pointer-events-auto flex gap-6 md:gap-8">
           <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
             Posts
