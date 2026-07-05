@@ -30,7 +30,12 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 // For Google Sign-In, we need to set up the OAuth2 client with our Google Client ID.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; 
+
+const googleClient = new OAuth2Client(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET
+);
 
 // This is the Services ID you generate in the Apple Developer Portal (e.g., com.glidesports.app.services)
 const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID; 
@@ -330,8 +335,6 @@ app.post('/api/auth/google', async (req, res) => {
 
 // GET route for Google OAuth callback (for web-based flows)
 app.get('/api/auth/google/callback', async (req, res) => {
-    // Google passes the verification string inside the 'code' parameter, 
-    // and our frontend home origin inside the 'state' parameter.
     const { code, state } = req.query;
 
     if (!code) {
@@ -339,14 +342,17 @@ app.get('/api/auth/google/callback', async (req, res) => {
     }
 
     try {
-        // Trade the single-use code for real account tokens
-        // This must pass your exact whitelisted callback URL as a confirmation key.
         const { tokens } = await googleClient.getToken({
-            code,
+            code: code,
+            client_id: GOOGLE_CLIENT_ID,
+            client_secret: GOOGLE_CLIENT_SECRET,
             redirectUri: 'https://glide-sports.onrender.com/api/auth/google/callback'
         });
 
-        // Cryptographically open the ID Token packet to extract user fields
+        // Set the credentials on the client context so verifyIdToken can read it securely
+        googleClient.setCredentials(tokens);
+
+        // Cryptographically open the ID Token packet
         const ticket = await googleClient.verifyIdToken({
             idToken: tokens.id_token,
             audience: GOOGLE_CLIENT_ID,
@@ -361,7 +367,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
             targetFrontendOrigin = state;
         }
 
-        // 3. Match profile matching data inside our SQLite users database
+        // Match profile matching data inside our SQLite users database
         db.get(`SELECT id FROM users WHERE google_id = ?`, [google_id], (err, user) => {
             if (err) return res.status(500).send("Database error processing profile lookup.");
 
@@ -370,7 +376,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
                 const glideToken = jwt.sign({ userId: user.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
                 const userData = { id: user.id, name, picture };
                 
-                // Pack the credentials tightly into url parameters and slide the user back to the Next.js home screen layout
+                // We redirect the user back to the frontend with their new Glide JWT token and profile data encoded in the URL.
                 const redirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
                 return res.redirect(redirectUrl);
             } else {
