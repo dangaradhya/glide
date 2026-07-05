@@ -302,23 +302,31 @@ app.post('/api/auth/google', async (req, res) => {
         const payload = ticket.getPayload();
         const { sub: google_id, email, name, picture } = payload;
 
-        // Check if this Google user already exists in our database by looking up their google_id.
-        db.get(`SELECT id FROM users WHERE google_id = ?`, [google_id], (err, user) => {
+        // Try to find the user by their Google ID
+        db.get(`SELECT id FROM users WHERE google_id = ?`, [google_id], (err, userByGoogle) => {
             if (err) return res.status(500).json({ error: 'Database error' });
 
-            if (user) {
-                // User exists, generate Glide JWT and log them in
-                const glideToken = jwt.sign({ userId: user.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                return res.status(200).json({ token: glideToken, user: { id: user.id, name, picture } });
+            if (userByGoogle) {
+                // Standard returning Google user
+                const glideToken = jwt.sign({ userId: userByGoogle.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
+                return res.status(200).json({ token: glideToken, user: { id: userByGoogle.id, name, picture } });
             } else {
-                // New user! Save them to the database first
-                db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
-                [google_id, email, name, picture], function(insertErr) {
-                    if (insertErr) return res.status(500).json({ error: 'Failed to create user' });
-                    
-                    // After inserting, 'this.lastID' gives us the ID of the newly created user. We use that to generate the JWT token.
-                    const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                    res.status(201).json({ token: glideToken, user: { id: this.lastID, name, picture } });
+                // Check if they previously signed up with Apple using this exact email
+                db.get(`SELECT id FROM users WHERE email = ?`, [email], (err, userByEmail) => {
+                    if (userByEmail) {
+                        // Email exists! Safely link the session and log them in smoothly.
+                        const glideToken = jwt.sign({ userId: userByEmail.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
+                        return res.status(200).json({ token: glideToken, user: { id: userByEmail.id, name, picture } });
+                    } else {
+                        // 3. Truly new user! Safe to insert.
+                        db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
+                        [google_id, email, name, picture], function(insertErr) {
+                            if (insertErr) return res.status(500).json({ error: 'Failed to create user' });
+                            
+                            const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
+                            res.status(201).json({ token: glideToken, user: { id: this.lastID, name, picture } });
+                        });
+                    }
                 });
             }
         });
@@ -328,42 +336,35 @@ app.post('/api/auth/google', async (req, res) => {
     }
 });
 
-// Apple requires this parallel route. It verifies the identity token cryptographically
-// against Apple's public servers, avoiding the need for manual API keys.
+// APPLE AUTHENTICATION ROUTE
+// This route handles Apple Sign-In. Similar to Google, we verify the Apple ID token, extract user info, and manage user records in our database.
 app.post('/api/auth/apple', async (req, res) => {
-    // If Apple posts browser data via encoded form streams, the key fields map to 
-    // id_token and user variables instead of native JSON body labels.
+    // The frontend should send a JSON payload with the Apple ID token and optionally the user's name.
     const token = req.body.token || req.body.id_token;
     const incomingName = req.body.name || req.body.user;
 
-    // If the validation layers fail to extract a token block from the stream, exit immediately to prevent processing errors.
+    // If the token is missing, we return a 400 Bad Request status with an error message.
     if (!token) {
         return res.status(400).json({ error: 'Missing secure identity token payload.' });
     }
 
     try {
-        // We configure the audience verification block to accept both an array containing 
-        // your web Services ID and your strict mobile Bundle ID (com.glidesports.glide).
+        // Verify the Apple ID token using the apple-signin-auth library. We specify the expected audience (our Apple Client ID) and ignore expiration for testing purposes.
         const payload = await appleSignin.verifyIdToken(token, {
             audience: [APPLE_CLIENT_ID, 'com.glidesports.glide'], 
             ignoreExpiration: true,
         });
-
-        // Extract Apple's unique user identifier and their verified email
-        const { sub: apple_sub, email } = payload;
-
-        // Apple doesn't always send the email in the payload, especially if the user has chosen to hide it.
-        const safeEmail = email || `${apple_sub}@privaterelay.appleid.com`;
         
-        // Brilliant DB Hack: Since our users table enforces a 'NOT NULL' on google_id, 
-        // we prepend the Apple sub with "apple_" and store it in that column. 
-        // This avoids a massive database migration entirely!
+        // Extract the unique Apple user ID (sub) and email from the payload. If the email is missing (Apple can hide it), we create a safe fallback
+        // email using Apple's private relay domain. Also, we create a unified provider ID that combines "apple_" with the unique Apple user ID for consistent database storage.
+        const { sub: apple_sub, email } = payload;
+        const safeEmail = email || `${apple_sub}@privaterelay.appleid.com`;
         const unifiedProviderId = `apple_${apple_sub}`;
         
         let parsedName = "";
         if (incomingName) {
             try {
-                // Apple sends the web profile name layer wrapped as an explicit JSON string block.
+                // Apple sends the name as a JSON string, so we parse it. If it's already an object, we use it directly.
                 const profileObj = typeof incomingName === 'string' ? JSON.parse(incomingName) : incomingName;
                 if (profileObj.name && profileObj.name.firstName) {
                     parsedName = `${profileObj.name.firstName} ${profileObj.name.lastName || ''}`.trim();
@@ -375,56 +376,63 @@ app.post('/api/auth/apple', async (req, res) => {
             }
         }
         
-        const finalName = parsedName || email.split('@')[0];
+        // If we couldn't parse a name from the Apple payload, we fall back to using the part of the email before the '@' symbol. 
+        // This ensures we always have a display name for the user.
+        const finalName = parsedName || safeEmail.split('@')[0];
         const defaultPicture = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=random`;
 
-        db.get(`SELECT id, name, picture FROM users WHERE google_id = ?`, [unifiedProviderId], (err, user) => {
+        db.get(`SELECT id, name, picture FROM users WHERE google_id = ?`, [unifiedProviderId], (err, userByApple) => {
             if (err) return res.status(500).send("Database error");
 
-            // Secure Open-Redirect Protection (Allows you to test on localhost seamlessly)
+            // We determine the target origin for the redirect after successful authentication. By default, we send them to the live 
+            // web app, but if the request came from localhost or the backup domain, we respect that.
             let targetOrigin = 'https://glidesports.app';
             if (req.body.state === 'http://localhost:3000' || req.body.state === 'https://www.glidesports.app') {
                 targetOrigin = req.body.state;
             }
 
-            if (user) {
-                // If Apple sends us a fresh 'incomingName' payload (because the user reset their permissions),
-                // we intercept it and UPDATE their database row to overwrite the old anonymous garbage data!
+            // If we found a user with this Apple ID, we check if we have a new name to update. If so, we update their record in the database.
+            if (userByApple) {
                 if (incomingName) {
+                    // Update the user's name and picture in the database if we received a new name from Apple. This ensures that if the user 
+                    // changes their name in Apple, our app reflects that change.
                     db.run(`UPDATE users SET name = ?, picture = ?, email = ? WHERE id = ?`, 
-                    [finalName, defaultPicture, safeEmail, user.id], 
+                    [finalName, defaultPicture, safeEmail, userByApple.id], 
                     (updateErr) => {
                         if (updateErr) console.error("Failed to update upgraded Apple profile:", updateErr);
-                        
-                        const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                        // Pass the fresh new data back to the frontend
-                        const userData = { id: user.id, name: finalName, picture: defaultPicture };
-                        
-                        const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                        return res.redirect(redirectUrl);
+
+                        // After updating, we generate a new JWT token for the user and redirect them back to the frontend with their token and user data.
+                        const glideToken = jwt.sign({ userId: userByApple.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                        const userData = { id: userByApple.id, name: finalName, picture: defaultPicture };
+                        return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
                     });
                 } else {
-                    // Standard returning user flow (No new name provided)
-                    // We generate a new Glide JWT token for the user and send them back to the frontend with their existing profile data.
-                    const glideToken = jwt.sign({ userId: user.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                    const userData = { id: user.id, name: user.name, picture: user.picture };
-                    
-                    const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                    return res.redirect(redirectUrl);
+                    // No new name provided, just generate the token and redirect
+                    const glideToken = jwt.sign({ userId: userByApple.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                    const userData = { id: userByApple.id, name: userByApple.name, picture: userByApple.picture };
+                    return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
                 }
-
             } else {
-                // New Apple User
-                db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
-                [unifiedProviderId, safeEmail, finalName, defaultPicture], function(insertErr) {
-                    if (insertErr) return res.status(500).send("Failed to create user");
-                    
-                    const glideToken = jwt.sign({ userId: this.lastID, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                    const userData = { id: this.lastID, name: finalName, picture: defaultPicture };
-                    
-                    // Same redirect bridge for new users
-                    const redirectUrl = `${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                    return res.redirect(redirectUrl);
+                // If we didn't find a user with this Apple ID, we check if there's a user with the same email. This handles the case where a user previously 
+                // signed up with Google and is now signing in with Apple using the same email.
+                db.get(`SELECT id, name, picture FROM users WHERE email = ?`, [safeEmail], (err, userByEmail) => {
+                    if (userByEmail) {
+                        // User previously signed up with Google! Let them in smoothly.
+                        const glideToken = jwt.sign({ userId: userByEmail.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                        const userData = { id: userByEmail.id, name: userByEmail.name, picture: userByEmail.picture };
+                        return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
+                    } else {
+                        // Truly new Apple user!
+                        db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
+                        [unifiedProviderId, safeEmail, finalName, defaultPicture], function(insertErr) {
+                            if (insertErr) return res.status(500).send("Failed to create user");
+                            
+                            // After creating the new user, we generate a JWT token for them and redirect back to the frontend with their token and user data.
+                            const glideToken = jwt.sign({ userId: this.lastID, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                            const userData = { id: this.lastID, name: finalName, picture: defaultPicture };
+                            return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
+                        });
+                    }
                 });
             }
         });

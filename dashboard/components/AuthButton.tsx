@@ -292,6 +292,7 @@ export default function AuthButton() {
                     width="320"
                     text="continue_with"
                     useOneTap={false} 
+                    use_fedcm_for_prompt={true} 
                   />
                 </div>
               )}
