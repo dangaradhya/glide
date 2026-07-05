@@ -656,11 +656,11 @@ function ReelsContent() {
                       </svg>
                     </div>
                     <h2 className="text-3xl font-bold text-white mb-3 drop-shadow-md">Glide Mobile</h2>
-                    <p className="text-gray-400 mb-8 max-w-xs leading-relaxed">Flawless background playback, instant push highlights, and premium media viewing metrics are on the way.</p>
+                    <p className="text-gray-400 mb-8 max-w-xs leading-relaxed">Flawless video playback, instant push notifications, and optimized highlight feeds are on the way.</p>
                     
                     {/* Updated button element to behave as a sleek, non-clickable launch indicator */}
                     <div className="bg-purple-600/30 border border-purple-500/50 text-purple-300 font-bold py-3.5 px-8 rounded-full text-base tracking-wide shadow-inner select-none cursor-default">
-                      {isIOSBrowser ? 'Coming Soon to Apple TestFlight' : 'Coming Soon to Google Play'}
+                      {isIOSBrowser ? 'Coming Soon to the Apple App Store' : 'Coming Soon to the Google Play Store'}
                     </div>
                   </div>
                 </div>
