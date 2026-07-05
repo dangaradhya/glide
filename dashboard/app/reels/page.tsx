@@ -951,17 +951,34 @@ function ReelsContent() {
               const timeElapsedMinutes = (Date.now() - commentTime) / (1000 * 60);
               const isWithinEditWindow = timeElapsedMinutes <= 15;
   
+              // Inject custom profile logic: If the user has a custom profile stored in localStorage, we override the default name and picture.
+              let displayName = comment.name;
+              let displayPicture = comment.picture || 'https://via.placeholder.com/40';
+
+              if (typeof window !== 'undefined') {
+                const customProfileStr = localStorage.getItem(`glide_custom_profile_${comment.user_id}`);
+                if (customProfileStr) {
+                  try {
+                    const customProfile = JSON.parse(customProfileStr);
+                    if (customProfile.name) displayName = customProfile.name;
+                    if (customProfile.picture) displayPicture = customProfile.picture;
+                  } catch (e) {
+                    console.error("Failed to parse custom profile logic");
+                  }
+                }
+              }
+
               return (
                 <div key={comment.id} className="flex space-x-3 group">
                   <img 
-                    src={comment.picture || 'https://via.placeholder.com/40'} 
-                    alt={comment.name} 
-                    className="w-8 h-8 rounded-full shadow-sm mt-1" 
+                    src={displayPicture} 
+                    alt={displayName} 
+                    className="w-8 h-8 rounded-full shadow-sm mt-1 object-cover" 
                     referrerPolicy="no-referrer"
                   />
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
-                      <span className="font-bold text-sm">{comment.name}</span>
+                      <span className="font-bold text-sm">{displayName}</span>
                       <span className="text-[10px] text-gray-400">
                         {new Date(comment.timestamp + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>

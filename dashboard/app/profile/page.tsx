@@ -1,5 +1,4 @@
 // app/profile/page.tsx
-
 "use client";
 
 // 1. IMPORTS
@@ -27,7 +26,14 @@ export default function ProfileVault() {
   });
 
   // State to hold user profile information for display in the header
-  const [userProfile, setUserProfile] = useState<{ name: string; picture: string; email: string } | null>(null);
+  const [userProfile, setUserProfile] = useState<{ id: number | string; name: string; picture: string; email: string } | null>(null);
+
+  // Toggles editing mode and maintains text fields for profile overrides
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState("");
+  
+  const [editPicture, setEditPicture] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
 
   // Scroll-to-top button state
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -64,7 +70,11 @@ export default function ProfileVault() {
         return;
       }
 
-      setUserProfile(JSON.parse(userStr));
+      const parsedUser = JSON.parse(userStr);
+      setUserProfile(parsedUser);
+      // Pre-fill input variables in case they click edit
+      setEditName(parsedUser.name || "");
+      setEditPicture(parsedUser.picture || "");
 
       try {
         const res = await fetch('https://glide-sports.onrender.com/api/users/me/vault', {
@@ -100,6 +110,56 @@ export default function ProfileVault() {
     fetchVaultData();
   }, []);
 
+  // Processes raw native browser file buffers into string blocks safely
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      return alert("Please drop a valid image file!");
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      return alert("Image must be smaller than 2MB to keep performance fast!");
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setEditPicture(e.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // PROFILE PERSISTENCE SAVE HANDLER
+  // Overwrites local storage variables to map custom display settings natively
+  const handleSaveProfile = () => {
+    if (!editName.trim()) return alert("Name cannot be empty!");
+    
+    // We fall back to a blank string if ID is missing to guarantee the type matches our interface
+    const currentId = userProfile?.id || "";
+    
+    const updatedProfile = {
+      id: currentId,
+      name: editName,
+      picture: editPicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(editName)}&background=random`,
+      email: userProfile?.email || ""
+    };
+
+    localStorage.setItem('glide_user', JSON.stringify(updatedProfile));
+    
+    // SAVE TO PERMANENT OVERRIDE DICTIONARY USING THEIR DB ID
+    if (currentId) {
+      localStorage.setItem(`glide_custom_profile_${currentId}`, JSON.stringify({
+        name: updatedProfile.name,
+        picture: updatedProfile.picture
+      }));
+    }
+
+    setUserProfile(updatedProfile);
+    setIsEditingProfile(false);
+    
+    // Force a minor page reload layout step to update your top right navbar AuthButton avatar cleanly
+    window.location.reload();
+  };
+
   // 4. RENDER HELPERS
   const activeData = vault[activeTab];
 
@@ -132,15 +192,115 @@ export default function ProfileVault() {
             {/* User Profile Header */}
             {/* Dynamic background, borders, and shadows for Light/Dark mode */}
             {/* Reduced padding, margin, avatar size, and font sizes for mobile. Scales up at md: breakpoint. */}
-            <div className="flex flex-col items-center mb-8 md:mb-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 md:p-8 shadow-md dark:shadow-2xl transition-colors">
-              <img 
-                src={userProfile?.picture} 
-                alt="Profile" 
-                className="w-16 h-16 md:w-24 md:h-24 rounded-full border-2 md:border-4 border-gray-200 dark:border-gray-800 shadow-lg mb-3 md:mb-4"
-                referrerPolicy="no-referrer"
-              />
-              <h1 className="text-2xl md:text-3xl font-bold text-center">{userProfile?.name}</h1>
-              <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-1 text-center">{userProfile?.email}</p>
+            <div className="w-full max-w-2xl mx-auto mb-8 md:mb-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 md:p-8 shadow-md dark:shadow-2xl transition-colors relative">
+              {isEditingProfile ? (
+                // Editing Layout Panel
+                <div className="flex flex-col space-y-4 w-full">
+                  <h2 className="text-xl font-bold border-b border-gray-100 dark:border-gray-800 pb-2 mb-2">Edit Profile Setup</h2>
+                  
+                  <div className="flex flex-col space-y-1">
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Display Name</label>
+                    <input 
+                      type="text" 
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 outline-none w-full"
+                    />
+                  </div>
+
+                  {/* INTERACTIVE DRAG-AND-DROP FILE DROPZONE */}
+                  <div className="flex flex-col space-y-1">
+                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Profile Picture</label>
+                    
+                    <div 
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragging(false);
+                        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                          handleImageFile(e.dataTransfer.files[0]);
+                        }
+                      }}
+                      className={`w-full border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-all ${
+                        isDragging 
+                          ? 'border-purple-500 bg-purple-500/10' 
+                          : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/20 hover:bg-gray-100/50 dark:hover:bg-gray-800/30'
+                      }`}
+                    >
+                      {editPicture ? (
+                        <div className="flex items-center space-x-4 w-full px-2">
+                          <img src={editPicture} alt="Preview" className="w-14 h-14 rounded-full object-cover shadow border border-white/20 shrink-0" />
+                          <div className="text-left flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-green-500">Image uploaded successfully</p>
+                            <p className="text-xs text-gray-400 truncate">Ready to save</p>
+                          </div>
+                          <button 
+                            type="button"
+                            onClick={() => setEditPicture("")}
+                            className="text-xs text-red-500 font-bold hover:underline bg-red-500/10 px-2.5 py-1 rounded-md"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center cursor-pointer w-full h-full">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                            Drag & drop a image, or <span className="text-purple-500 underline">browse</span>
+                          </span>
+                          <span className="text-[10px] text-gray-400 mt-1">Supports PNG, JPG up to 2MB</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleImageFile(e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex space-x-3 pt-2">
+                    <button 
+                      onClick={handleSaveProfile} 
+                      className="px-5 py-2 text-xs font-bold bg-purple-600 text-white rounded-full hover:bg-purple-500 transition-colors shadow-md"
+                    >
+                      Save Changes
+                    </button>
+                    <button 
+                      onClick={() => setIsEditingProfile(false)} 
+                      className="px-5 py-2 text-xs font-semibold bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // Standard Profile Read Mode
+                <div className="flex flex-col items-center">
+                  <button 
+                    onClick={() => setIsEditingProfile(true)}
+                    className="absolute top-5 right-5 text-xs font-bold text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-full border border-purple-500/20 transition-all active:scale-95"
+                  >
+                    Edit Profile
+                  </button>
+                  <img 
+                    src={userProfile?.picture} 
+                    alt="Profile" 
+                    className="w-16 h-16 md:w-24 md:h-24 rounded-full border-2 md:border-4 border-gray-200 dark:border-gray-800 shadow-lg mb-3 md:mb-4 object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                  <h1 className="text-2xl md:text-3xl font-bold text-center">{userProfile?.name}</h1>
+                  <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-1 text-center">{userProfile?.email}</p>
+                </div>
+              )}
             </div>
 
             {/* The Tab Navigation */}
