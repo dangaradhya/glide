@@ -30,12 +30,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 // For Google Sign-In, we need to set up the OAuth2 client with our Google Client ID.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; 
-
-const googleClient = new OAuth2Client(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET
-);
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // This is the Services ID you generate in the Apple Developer Portal (e.g., com.glidesports.app.services)
 const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID; 
@@ -330,75 +325,6 @@ app.post('/api/auth/google', async (req, res) => {
     } catch (error) {
         console.error("Google Auth Error:", error);
         res.status(401).json({ error: 'Invalid Google token' });
-    }
-});
-
-// GET route for Google OAuth callback (for web-based flows)
-app.get('/api/auth/google/callback', async (req, res) => {
-    const { code, state } = req.query;
-
-    if (!code) {
-        return res.status(400).send("Authentication code missing from redirect stream.");
-    }
-
-    try {
-        const { tokens } = await googleClient.getToken({
-            code: code,
-            client_id: GOOGLE_CLIENT_ID,
-            client_secret: GOOGLE_CLIENT_SECRET,
-            redirect_uri: 'https://glide-sports.onrender.com/api/auth/google/callback'
-        });
-
-        // Set the credentials on the client context so verifyIdToken can read it securely
-        googleClient.setCredentials(tokens);
-
-        // Cryptographically open the ID Token packet
-        const ticket = await googleClient.verifyIdToken({
-            idToken: tokens.id_token,
-            audience: GOOGLE_CLIENT_ID,
-        });
-        
-        const payload = ticket.getPayload();
-        const { sub: google_id, email, name, picture } = payload;
-
-        // Secure fallback origin protection to handle local testing environments safely
-        let targetFrontendOrigin = 'https://glidesports.app';
-        if (state === 'http://localhost:3000' || state === 'https://www.glidesports.app') {
-            targetFrontendOrigin = state;
-        }
-
-        // Match profile matching data inside our SQLite users database
-        db.get(`SELECT id FROM users WHERE google_id = ?`, [google_id], (err, user) => {
-            if (err) return res.status(500).send("Database error processing profile lookup.");
-
-            if (user) {
-                // Existing user flow
-                const glideToken = jwt.sign({ userId: user.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                const userData = { id: user.id, name, picture };
-                
-                const finalRedirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                return res.redirect(finalRedirectUrl);
-            } else {
-                // New user registration flow
-                db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
-                [google_id, email, name, picture], function(insertErr) {
-                    if (insertErr) return res.status(500).send("Failed to save fresh user profile metadata.");if (insertErr) {
-                        console.error("❌ SQLITE REGISTRATION FAILURE:", insertErr.message);
-                        return res.status(500).send(`Failed to save fresh user profile metadata. Database reason: ${insertErr.message}`);
-                    }
-                    
-                    const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                    const userData = { id: this.lastID, name, picture };
-                    
-                    const finalRedirectUrl = `${targetFrontendOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`;
-                    return res.redirect(finalRedirectUrl);
-                });
-            }
-        });
-    } catch (error) {
-        console.error("Redirect Flow Verification Error:", error);
-        Sentry.captureException(error);
-        res.status(401).send("Failed to securely exchange tokens with Google's verification clusters.");
     }
 });
 
