@@ -72,16 +72,35 @@ export default function AuthButton() {
     if (urlToken && urlUser) {
       localStorage.setItem('glide_token', urlToken);
       localStorage.setItem('glide_user', decodeURIComponent(urlUser));
+      
+      // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
+      const parsedUser = JSON.parse(decodeURIComponent(urlUser));
+      import('posthog-js').then(({ default: ph }) => {
+        ph.identify(parsedUser.id.toString(), {
+          email: parsedUser.email,
+          name: parsedUser.name,
+          avatar: parsedUser.picture
+        });
+      });
+
       // Silently clean the URL to hide the tokens from the address bar
       window.history.replaceState({}, document.title, window.location.pathname);
-      setUser(JSON.parse(decodeURIComponent(urlUser)));
+      setUser(parsedUser);
       window.location.reload();
       return; 
     }
 
     const storedUser = localStorage.getItem('glide_user');
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+
+      // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
+      import('posthog-js').then(({ default: ph }) => {
+        ph.identify(parsedUser.id.toString(), {
+          name: parsedUser.name
+        });
+      });
     }
   }, [isStrictlyAppleDevice]);
 
@@ -102,6 +121,15 @@ export default function AuthButton() {
       if (res.ok) {
         localStorage.setItem('glide_token', data.token);
         localStorage.setItem('glide_user', JSON.stringify(data.user));
+        
+        // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
+        const { default: ph } = await import('posthog-js');
+        ph.identify(data.user.id.toString(), {
+          email: data.user.email,
+          name: data.user.name,
+          avatar: data.user.picture
+        });
+
         setUser(data.user);
         setShowModal(false); 
         window.location.reload();
@@ -130,6 +158,15 @@ export default function AuthButton() {
       if (res.ok) {
         localStorage.setItem('glide_token', data.token);
         localStorage.setItem('glide_user', JSON.stringify(data.user));
+        
+        // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
+        const { default: ph } = await import('posthog-js');
+        ph.identify(data.user.id.toString(), {
+          email: data.user.email,
+          name: data.user.name,
+          avatar: data.user.picture
+        });
+
         setUser(data.user);
         setShowModal(false); 
         window.location.reload();
@@ -196,6 +233,10 @@ export default function AuthButton() {
       googleLogout();
     }
     
+    // We also reset PostHog analytics tracking to ensure that the user's session is cleared and no further events are associated with their previous identity.
+    const { default: ph } = await import('posthog-js');
+    ph.reset();
+
     localStorage.removeItem('glide_token');
     localStorage.removeItem('glide_user');
     setUser(null);
