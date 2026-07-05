@@ -70,18 +70,20 @@ export default function AuthButton() {
     }
 
     if (urlToken && urlUser) {
+      // We only perform basic writes during the cross-site redirect to avoid Safari ITP crashes
       localStorage.setItem('glide_token', urlToken);
       localStorage.setItem('glide_user', decodeURIComponent(urlUser));
       
-      // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
       const parsedUser = JSON.parse(decodeURIComponent(urlUser));
+      
+      // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
       import('posthog-js').then(({ default: ph }) => {
         ph.identify(parsedUser.id.toString(), {
           email: parsedUser.email,
           name: parsedUser.name,
           avatar: parsedUser.picture
         });
-      });
+      }).catch(() => console.warn("Analytics blocked by browser"));
 
       // Silently clean the URL to hide the tokens from the address bar
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -91,16 +93,31 @@ export default function AuthButton() {
     }
 
     const storedUser = localStorage.getItem('glide_user');
+    // If we have a user stored in localStorage, we parse it and set it in the state. We also identify the user in PostHog for analytics tracking.
     if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
+      let parsedUser = JSON.parse(storedUser);
+
+      // We wait until the app has cleanly reloaded to read the custom profile.
+      // This perfectly preserves the edit profile feature while bypassing Safari's redirect blockers!
+      try {
+        const customOverride = localStorage.getItem(`glide_custom_profile_${parsedUser.id}`);
+        if (customOverride) {
+          parsedUser = { ...parsedUser, ...JSON.parse(customOverride) };
+          // Overwrite the base user in localStorage so the rest of the app sees the custom profile
+          localStorage.setItem('glide_user', JSON.stringify(parsedUser)); 
+        }
+      } catch (e) {
+        console.warn("Ignored custom profile parse error");
+      }
+
       setUser(parsedUser);
 
-      // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
+      // This prevents iOS Safari's native tracking blocker from crashing the login loop
       import('posthog-js').then(({ default: ph }) => {
         ph.identify(parsedUser.id.toString(), {
           name: parsedUser.name
         });
-      });
+      }).catch(() => console.warn("Analytics blocked by browser"));
     }
   }, [isStrictlyAppleDevice]);
 
@@ -120,17 +137,29 @@ export default function AuthButton() {
       // update the user state, close the modal, and reload the page to reflect the authenticated state.
       if (res.ok) {
         localStorage.setItem('glide_token', data.token);
-        localStorage.setItem('glide_user', JSON.stringify(data.user));
         
-        // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
-        const { default: ph } = await import('posthog-js');
-        ph.identify(data.user.id.toString(), {
-          email: data.user.email,
-          name: data.user.name,
-          avatar: data.user.picture
-        });
+        let finalUser = data.user;
 
-        setUser(data.user);
+        // Check for any permanent overrides by user ID in localStorage. If an override exists, we merge it with the incoming user data.
+        try {
+          const customOverride = localStorage.getItem(`glide_custom_profile_${data.user.id}`);
+          if (customOverride) {
+            finalUser = { ...data.user, ...JSON.parse(customOverride) };
+          }
+        } catch (e) {}
+        
+        localStorage.setItem('glide_user', JSON.stringify(finalUser));
+        
+        // Non-blocking telemetry identification to prevent iOS Safari's native tracking blocker from crashing the login loop
+        import('posthog-js').then(({ default: ph }) => {
+          ph.identify(finalUser.id.toString(), {
+            email: finalUser.email,
+            name: finalUser.name,
+            avatar: finalUser.picture
+          });
+        }).catch(() => console.warn("Analytics blocked by browser"));
+
+        setUser(finalUser);
         setShowModal(false); 
         window.location.reload();
       } 
@@ -157,17 +186,29 @@ export default function AuthButton() {
       // If the server responds with a successful status, we store the authentication token and user information in localStorage,
       if (res.ok) {
         localStorage.setItem('glide_token', data.token);
-        localStorage.setItem('glide_user', JSON.stringify(data.user));
         
-        // Link the user to PostHog for analytics tracking, using the user ID and other relevant information.
-        const { default: ph } = await import('posthog-js');
-        ph.identify(data.user.id.toString(), {
-          email: data.user.email,
-          name: data.user.name,
-          avatar: data.user.picture
-        });
+        let finalUser = data.user;
 
-        setUser(data.user);
+        // Check for any permanent overrides by user ID in localStorage. If an override exists, we merge it with the incoming user data.
+        try {
+          const customOverride = localStorage.getItem(`glide_custom_profile_${data.user.id}`);
+          if (customOverride) {
+            finalUser = { ...data.user, ...JSON.parse(customOverride) };
+          }
+        } catch (e) {}
+        
+        localStorage.setItem('glide_user', JSON.stringify(finalUser));
+        
+        // Non-blocking telemetry identification to prevent iOS Safari's native tracking blocker from crashing the login loop
+        import('posthog-js').then(({ default: ph }) => {
+          ph.identify(finalUser.id.toString(), {
+            email: finalUser.email,
+            name: finalUser.name,
+            avatar: finalUser.picture
+          });
+        }).catch(() => console.warn("Analytics blocked by browser"));
+
+        setUser(finalUser);
         setShowModal(false); 
         window.location.reload();
       } 
@@ -233,12 +274,15 @@ export default function AuthButton() {
       googleLogout();
     }
     
-    // We also reset PostHog analytics tracking to ensure that the user's session is cleared and no further events are associated with their previous identity.
-    const { default: ph } = await import('posthog-js');
-    ph.reset();
+    // Non-blocking telemetry wipe
+    import('posthog-js').then(({ default: ph }) => {
+        ph.reset();
+    }).catch(() => console.warn("Analytics blocked by browser"));
 
+    // Remove the authentication token and user information from localStorage
     localStorage.removeItem('glide_token');
     localStorage.removeItem('glide_user');
+
     setUser(null);
     window.location.reload();
   };
@@ -258,7 +302,7 @@ export default function AuthButton() {
           <img 
               src={user.picture} 
               alt="Profile" 
-              className="w-8 h-8 rounded-full border border-gray-200 dark:border-white/50" 
+              className="w-8 h-8 rounded-full border border-gray-200 dark:border-white/50 object-cover" 
               referrerPolicy="no-referrer"
           />
           <span className="text-sm font-medium text-gray-800 dark:text-white cursor-pointer">{user.name.split(' ')[0]}</span>
