@@ -328,8 +328,20 @@ app.post('/api/auth/google', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Google Auth Error:", error);
-        res.status(401).json({ error: 'Invalid Google token' });
+        // --- HIGHLIGHTED CHANGE: DEEP SPECIFIC ERROR TRACING ---
+        console.error("❌ CRITICAL REDIRECT OAUTH ERROR ENVELOPE:", {
+            message: error.message,
+            stack: error.stack,
+            // Google's library nesting often hides the true API response here
+            googleResponseBody: error.response ? error.response.data : "No nested response body"
+        });
+
+        // Send the real inner error text straight to the white screen so we see it on your phone instantly
+        const errorDetails = error.response && error.response.data 
+            ? JSON.stringify(error.response.data) 
+            : error.message;
+
+        res.status(401).send(`Authentication failed. Exact error details: ${errorDetails}`);
     }
 });
 
