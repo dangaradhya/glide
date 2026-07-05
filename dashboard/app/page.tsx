@@ -645,7 +645,9 @@ export default function Home() {
             <p className="text-center text-gray-500 dark:text-gray-400 animate-pulse mt-20">Loading the latest news...</p>
           ) : posts.length === 0 ? (
             // Show this if the database is empty
-            <p className="text-center text-gray-500 dark:text-gray-400 mt-20">No news in the database yet. Run the scraper!</p>
+            <p className="text-center text-gray-500 dark:text-gray-400 mt-20 px-4 leading-relaxed">
+              No news available right now. Please check your internet connection and refresh the page!
+            </p>
           ) : (
             <>
               {/* The Category Filter Bar UI */}

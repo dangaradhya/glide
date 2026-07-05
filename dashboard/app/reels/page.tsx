@@ -627,7 +627,9 @@ function ReelsContent() {
         </div>
       ) : reels.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-400">No reels found. Run the scraper!</p>
+          <p className="text-gray-400 text-center px-4 leading-relaxed">
+            No reels found. Please wait for a stable internet connection and refresh the page!
+          </p>
         </div>
       ) : (
         /* The Scroll Snapping Container */
