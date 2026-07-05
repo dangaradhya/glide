@@ -382,7 +382,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
                 // New user registration flow
                 db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
                 [google_id, email, name, picture], function(insertErr) {
-                    if (insertErr) return res.status(500).send("Failed to save fresh user profile metadata.");
+                    if (insertErr) return res.status(500).send("Failed to save fresh user profile metadata.");if (insertErr) {
+                        console.error("❌ SQLITE REGISTRATION FAILURE:", insertErr.message);
+                        return res.status(500).send(`Failed to save fresh user profile metadata. Database reason: ${insertErr.message}`);
+                    }
                     
                     const glideToken = jwt.sign({ userId: this.lastID, email: email }, JWT_SECRET, { expiresIn: '90d' });
                     const userData = { id: this.lastID, name, picture };
