@@ -990,7 +990,7 @@ function ReelsContent() {
                         
                         {/* Action buttons (Only show if owner AND within 15 minutes) */}
                         {isOwner && isWithinEditWindow && (
-                          <div className="flex space-x-3 mt-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex space-x-3 mt-1 opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 transition-opacity">
                             <button 
                               onClick={() => { setEditingCommentId(comment.id); setEditCommentText(comment.text); }}
                               className="text-[11px] font-semibold text-gray-500 hover:text-purple-500 active:text-purple-600 p-1 -ml-1"
