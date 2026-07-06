@@ -18,15 +18,28 @@ const geistMono = Geist_Mono({
 });
 
 // Upgraded the metadata for Browser Tabs, SEO, and Social Sharing
+// Update for Google Search and Social Media Optimization
 export const metadata: Metadata = {
-  title: "Glide", 
-  description: "AI-Powered Sports Aggregator & Highlight Reels",
-  // Added PWA configuration for native app deployment
+  title: "Glide Sports | AI-Powered Sports Aggregator", 
+  description: "Experience clean, AI-curated sports news, immersive vertical highlight reels, and real-time score tracking at the Match Center - built for the modern fan.",
+  keywords: ["sports news", "sports aggregator", "highlights", "reels", "match center", "football", "basketball", "mma", "soccer", "tennis", "sports scores", "AI-curated sports"],
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Glide",
+  },
+  openGraph: {
+    title: "Glide Sports",
+    description: "AI-Curated news and highlights built for the modern sports fan.",
+    url: "https://glidesports.app",
+    siteName: "Glide Sports",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Glide Sports",
+    description: "AI-Curated news and highlights built for the modern sports fan.",
   },
 };
 
