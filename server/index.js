@@ -50,11 +50,11 @@ const allowedOrigins = [
 app.use(cors({ origin: allowedOrigins })); 
 // express.json() parses incoming JSON payloads (like when we POST new data). 
 // Without this, the body of an incoming request would just be raw bytes.
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Apple sends authentication payloads from web browsers as form-urlencoded data.
 // This middleware allows Express to decode those incoming bytes into req.body.
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // THE SCRAPER BOUNCER
 // This middleware blocks anyone from posting fake news to your database by requiring a secret API key.
@@ -391,27 +391,12 @@ app.post('/api/auth/apple', async (req, res) => {
                 targetOrigin = req.body.state;
             }
 
-            // If we found a user with this Apple ID, we check if we have a new name to update. If so, we update their record in the database.
             if (userByApple) {
-                if (incomingName) {
-                    // Update the user's name and picture in the database if we received a new name from Apple. This ensures that if the user 
-                    // changes their name in Apple, our app reflects that change.
-                    db.run(`UPDATE users SET name = ?, picture = ?, email = ? WHERE id = ?`, 
-                    [finalName, defaultPicture, safeEmail, userByApple.id], 
-                    (updateErr) => {
-                        if (updateErr) console.error("Failed to update upgraded Apple profile:", updateErr);
-
-                        // After updating, we generate a new JWT token for the user and redirect them back to the frontend with their token and user data.
-                        const glideToken = jwt.sign({ userId: userByApple.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                        const userData = { id: userByApple.id, name: finalName, picture: defaultPicture };
-                        return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
-                    });
-                } else {
-                    // No new name provided, just generate the token and redirect
-                    const glideToken = jwt.sign({ userId: userByApple.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
-                    const userData = { id: userByApple.id, name: userByApple.name, picture: userByApple.picture };
-                    return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
-                }
+                // If the user already exists in our DB, we DO NOT CARE what Apple sent. 
+                // We strictly return the name and picture currently saved in our database.
+                const glideToken = jwt.sign({ userId: userByApple.id, email: safeEmail }, JWT_SECRET, { expiresIn: '90d' });
+                const userData = { id: userByApple.id, name: userByApple.name, picture: userByApple.picture };
+                return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
             } else {
                 // If we didn't find a user with this Apple ID, we check if there's a user with the same email. This handles the case where a user previously 
                 // signed up with Google and is now signing in with Apple using the same email.
@@ -422,7 +407,7 @@ app.post('/api/auth/apple', async (req, res) => {
                         const userData = { id: userByEmail.id, name: userByEmail.name, picture: userByEmail.picture };
                         return res.redirect(`${targetOrigin}/?token=${glideToken}&user=${encodeURIComponent(JSON.stringify(userData))}`);
                     } else {
-                        // Truly new Apple user!
+                        // Truly new Apple user! Safe to insert finalName and defaultPicture.
                         db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
                         [unifiedProviderId, safeEmail, finalName, defaultPicture], function(insertErr) {
                             if (insertErr) return res.status(500).send("Failed to create user");
