@@ -129,8 +129,7 @@ export default function ProfileVault() {
   };
 
   // PROFILE PERSISTENCE SAVE HANDLER
-  // Overwrites local storage variables to map custom display settings natively
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     if (!editName.trim()) return alert("Name cannot be empty!");
     
     // We fall back to a blank string if ID is missing to guarantee the type matches our interface
@@ -143,19 +142,29 @@ export default function ProfileVault() {
       email: userProfile?.email || ""
     };
 
+    // Update the local machine instantly so the app feels incredibly fast
     localStorage.setItem('glide_user', JSON.stringify(updatedProfile));
-    
-    // SAVE TO PERMANENT OVERRIDE DICTIONARY USING THEIR DB ID
-    if (currentId) {
-      localStorage.setItem(`glide_custom_profile_${currentId}`, JSON.stringify({
-        name: updatedProfile.name,
-        picture: updatedProfile.picture
-      }));
-    }
 
     setUserProfile(updatedProfile);
     setIsEditingProfile(false);
-    
+
+    // Send the new profile data to the Express backend in the background
+    const token = localStorage.getItem('glide_token');
+    if (token) {
+      try {
+        await fetch('https://glide-sports.onrender.com/api/users/me/profile', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ name: updatedProfile.name, picture: updatedProfile.picture })
+        });
+      } catch (err) {
+        console.error("Failed to sync profile to server", err);
+      }
+    }
+
     // Force a minor page reload layout step to update your top right navbar AuthButton avatar cleanly
     window.location.reload();
   };

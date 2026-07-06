@@ -303,22 +303,22 @@ app.post('/api/auth/google', async (req, res) => {
         const { sub: google_id, email, name, picture } = payload;
 
         // Try to find the user by their Google ID
-        db.get(`SELECT id FROM users WHERE google_id = ?`, [google_id], (err, userByGoogle) => {
+        db.get(`SELECT id, name, picture FROM users WHERE google_id = ?`, [google_id], (err, userByGoogle) => {
             if (err) return res.status(500).json({ error: 'Database error' });
 
             if (userByGoogle) {
                 // Standard returning Google user
                 const glideToken = jwt.sign({ userId: userByGoogle.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                return res.status(200).json({ token: glideToken, user: { id: userByGoogle.id, name, picture } });
+                return res.status(200).json({ token: glideToken, user: { id: userByGoogle.id, name: userByGoogle.name, picture: userByGoogle.picture } });
             } else {
                 // Check if they previously signed up with Apple using this exact email
-                db.get(`SELECT id FROM users WHERE email = ?`, [email], (err, userByEmail) => {
+                db.get(`SELECT id, name, picture FROM users WHERE email = ?`, [email], (err, userByEmail) => {
                     if (userByEmail) {
                         // Email exists! Safely link the session and log them in smoothly.
                         const glideToken = jwt.sign({ userId: userByEmail.id, email: email }, JWT_SECRET, { expiresIn: '90d' });
-                        return res.status(200).json({ token: glideToken, user: { id: userByEmail.id, name, picture } });
+                        return res.status(200).json({ token: glideToken, user: { id: userByEmail.id, name: userByEmail.name, picture: userByEmail.picture } });
                     } else {
-                        // 3. Truly new user! Safe to insert.
+                        // Truly new user! Safe to insert.
                         db.run(`INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`, 
                         [google_id, email, name, picture], function(insertErr) {
                             if (insertErr) return res.status(500).json({ error: 'Failed to create user' });
@@ -1185,6 +1185,25 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
         console.error("Vault fetch error:", error);
         res.status(500).json({ error: 'Failed to retrieve vault data' });
     }
+});
+
+// PUT: Update the user's global profile (Name & Picture)
+app.put('/api/users/me/profile', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    const { name, picture } = req.body;
+
+    if (!name || !picture) {
+        return res.status(400).json({ error: 'Name and picture are required.' });
+    }
+
+    // Update the master users table with the new custom profile data
+    db.run(`UPDATE users SET name = ?, picture = ? WHERE id = ?`, [name, picture, userId], function(err) {
+        if (err) {
+            console.error("Failed to update profile:", err.message);
+            return res.status(500).json({ error: 'Failed to update profile in database' });
+        }
+        res.status(200).json({ success: true, message: 'Profile synced globally!' });
+    });
 });
 
 // 14. USER PREFERENCES ROUTES (Protected by authenticateToken)
