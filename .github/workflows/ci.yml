@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  dashboard:
+    name: Build & lint dashboard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - run: npm ci
+
+      # Informational only for now: the codebase has ~30 pre-existing lint errors
+      # (mostly a stricter React "no setState in effect" rule the existing code
+      # doesn't follow). Making this a hard gate today would fail every PR from
+      # the start for reasons unrelated to what any given PR changes. Revisit
+      # once that pre-existing debt gets cleaned up on its own.
+      - run: npm run lint || true
+
+      # Hard gate: this is the check that would have caught a missing `useRef`
+      # import that passed lint but broke the production build.
+      - run: npm run build
