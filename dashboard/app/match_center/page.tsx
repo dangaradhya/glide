@@ -136,11 +136,14 @@ export default function LiveUpdatesPage() {
     .filter(Boolean) as League[];
 
   return (
-    // Injected pt-[max(1rem,env(safe-area-inset-top))] to clear the device notch
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative">
+    // No extra top padding needed here for the notch - <body>'s pt-[var(--app-banner-height)]
+    // (see layout.tsx) already reserves that space for every page. Adding it again here
+    // would double-count the notch inset on top of what body already reserves.
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
       
-      {/* HIGHLIGHT: Added pb-24 md:pb-8 so the grid clears the mobile bottom navigation bar */}
-      <div className="max-w-4xl mx-auto pb-24 md:pb-8">
+      {/* Bottom padding clears the mobile bottom nav bar. Grows by the safe-area inset (same
+          var used on the nav bar below) for the same reason the nav bar itself does */}
+      <div className="max-w-4xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
         
         {/* Header Section */}
         <div className="flex items-center justify-between mb-4">
@@ -304,7 +307,10 @@ export default function LiveUpdatesPage() {
       </div>
 
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-16 z-[60] pb-[env(safe-area-inset-bottom)] px-4">
+      {/* h-16 (4rem) is the CONTENT height; the safe-area inset is added on top of that,
+          not carved out of it - Tailwind's border-box sizing means a fixed height plus bottom
+          padding alone would shrink the usable content area on tall insets */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-[calc(4rem_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4">
         <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
           Posts
         </Link>

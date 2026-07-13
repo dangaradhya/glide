@@ -8,3 +8,25 @@
 
 /* Tell Tailwind v4 to trigger 'dark:' classes when our toggle button clicks! */
 @custom-variant dark (&:is(.dark *));
+
+/* Cross-platform safe-area insets.
+   - iOS (WKWebView) and mobile web browsers support env(safe-area-inset-*) natively.
+   - Android's Chromium WebView does NOT support env(safe-area-inset-*) at all, so
+     Capacitor's SystemBars plugin instead injects the real inset as a plain CSS custom
+     property (--safe-area-inset-*) directly on <html> once the app boots.
+   These two variables merge both sources into one name so components never need to
+   know which platform they're on: env()'s built-in fallback only kicks in when env()
+   itself is unsupported (i.e. on Android), where it falls through to Capacitor's value. */
+:root {
+  --app-safe-top: env(safe-area-inset-top, var(--safe-area-inset-top, 0px));
+  --app-safe-bottom: env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px));
+
+  /* Single source of truth for how much space is reserved at the top of the app:
+     40px of marketing banner PLUS whatever notch/status-bar space it also has to
+     clear. On native (AppBanner.tsx), this gets overridden to just var(--app-safe-top)
+     - the banner disappears there, but the notch/status-bar clearance must NOT, so it
+     collapses to "notch only," never to a flat 0px. body's top padding, the banner's
+     own height, and any viewport-locked page (Reels) all reference this ONE variable,
+     so it's impossible for them to drift out of sync. */
+  --app-banner-height: calc(40px + var(--app-safe-top));
+}

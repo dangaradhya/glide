@@ -6,7 +6,7 @@
 // allowing us to use React hooks like useState and useEffect.
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 // Imported useRouter to safely navigate inside the mobile app wrapper
 import { useRouter } from 'next/navigation';
@@ -16,6 +16,9 @@ import AuthButton from '@/components/AuthButton';
 import ThemeToggle from '@/components/ThemeToggle';
 // Capacitor Share API for native sharing functionality on mobile devices
 import { Share } from '@capacitor/share';
+// Pull-to-Refresh gesture hook + its shared visual indicator
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 
 // A simple one-time lock for the initial page load. 
 // It resets perfectly on a hard refresh, keeping your desired behavior intact!
@@ -207,11 +210,47 @@ export default function Home() {
     }
   };
 
+  // Set right before a refresh-triggered setPage(1) below, so the pagination effect below
+  // can tell "page reset by a refresh that already fetched page 1" apart from a normal
+  // page change, and skip firing a redundant duplicate fetch for the page it just skipped to.
+  const skipNextPageFetchRef = useRef(false);
+
   // Replaced the interval with a page dependency
   // This runs automatically on initial load (page=1), and whenever the 'page' state changes.
   useEffect(() => {
+    if (skipNextPageFetchRef.current) {
+      skipNextPageFetchRef.current = false;
+      return;
+    }
     fetchPosts(page);
   }, [page]);
+
+  // Pull-to-Refresh Handler
+  // Unlike fetchPosts (which APPENDS the next page), this REPLACES the entire feed with
+  // a fresh "page 1" fetch, ordered by timestamp DESC. Since new posts really do land
+  // roughly hourly from the scraper, this is a genuine refresh (not just a visual trick)
+  // for the Posts feed - it will surface whatever the newest 5 posts actually are right now.
+  const refreshFeed = async () => {
+    if (loadingMore) return; // Don't clobber an in-flight "load more" pagination request
+    try {
+      const token = localStorage.getItem('glide_token');
+      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+      const res = await fetch(`https://glide-sports.onrender.com/api/posts?page=1&limit=5`, { headers });
+      const data = await res.json();
+
+      setPosts(data);
+      // If the user had paginated past page 1 before pulling to refresh, setPage(1) below
+      // would otherwise re-fire the effect above and fetch page 1 a second time - we just did.
+      if (page !== 1) skipNextPageFetchRef.current = true;
+      setPage(1);
+      setHasMore(data.length > 0);
+    } catch (err) {
+      console.error("Error refreshing feed:", err);
+    }
+  };
+
+  const { pullDistance, isRefreshing: isPullRefreshing, threshold: pullThreshold } = usePullToRefresh(refreshFeed, { windowScroll: true });
 
   // The Infinite Scroll Observer for the Posts Feed
   useEffect(() => {
@@ -515,12 +554,19 @@ export default function Home() {
   return (
     // Adjusted background/text colors for Light/Dark mode with a smooth transition
     // Adjusted max-w constraints on wrapper wrapper block to hold large layouts comfortably
-    // Injected pt-[max(1rem,env(safe-area-inset-top))] to push UI below the physical phone notch
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 pt-[max(1rem,env(safe-area-inset-top))] relative overflow-hidden">
-      
+    // No extra top padding needed here for the notch - <body>'s pt-[var(--app-banner-height)]
+    // (see layout.tsx) already reserves that space for every page. Adding it again here
+    // would double-count the notch inset on top of what body already reserves.
+    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative overflow-hidden">
+
+      {/* Pull-to-Refresh Indicator - tracks the drag gesture detected on the window */}
+      <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isPullRefreshing} threshold={pullThreshold} />
+
       {/* Changed max-w-6xl to max-w-3xl to perfectly center the single-column feed */}
-      {/* Added pb-20 md:pb-0 so the feed isn't hidden behind the new mobile bottom nav */}
-      <div className="max-w-3xl mx-auto relative z-10 pb-20 md:pb-0">
+      {/* Bottom padding clears the mobile bottom nav so the last card isn't hidden behind it.
+          Grows by the safe-area inset (same var used on the nav bar below) since the nav's
+          real on-screen height grows by that amount on notched/gesture-bar devices */}
+      <div className="max-w-3xl mx-auto relative z-10 pb-[calc(5rem_+_var(--app-safe-bottom))] md:pb-0">
         
       {/* Responsive Header Container */}
         {/* We use flex-col on the main wrapper, splitting the header into 2 distinct rows so nothing crashes on mobile */}
@@ -969,7 +1015,10 @@ export default function Home() {
       </div>
       
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-16 z-[60] pb-[env(safe-area-inset-bottom)] px-4">
+      {/* h-16 (4rem) is the CONTENT height; the safe-area inset is added on top of that,
+          not carved out of it - Tailwind's border-box sizing means a fixed height plus bottom
+          padding alone would shrink the usable content area on tall insets */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-[calc(4rem_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4">
         <Link href="/" className="text-gray-900 dark:text-white font-bold text-sm flex flex-col items-center pt-1 border-t-2 border-purple-500">
           Posts
         </Link>

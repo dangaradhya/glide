@@ -15,6 +15,9 @@ import { useSearchParams } from 'next/navigation';
 
 // Added the Web Share API with a fallback to clipboard copying for maximum shareability across platforms
 import { Share } from '@capacitor/share';
+// Pull-to-Refresh gesture hook + its shared visual indicator
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 
 function ReelsContent() {
   // 2. STATE MANAGEMENT
@@ -174,6 +177,42 @@ function ReelsContent() {
     // We intentionally leave out dependencies here because we only want to fetch once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pull-to-Refresh Handler
+  // Reels are already served via `ORDER BY RANDOM()` on the backend, so there's no real
+  // "newest reel" to chase the way there is for Posts. Instead, a refresh just grabs a
+  // brand new random batch (no exclude list) and replaces the whole feed - which gives
+  // the same "fresh content just loaded" feeling Instagram's pull-to-refresh gives you,
+  // even though it's drawn from the same underlying pool of reels.
+  const refreshReels = async () => {
+    if (loadingMore) return; // Don't clobber an in-flight "load more" pagination request
+    try {
+      const token = localStorage.getItem('glide_token');
+      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+      const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=10`, { headers });
+      const data = await res.json();
+
+      setReels(data);
+      setHasMore(data.length > 0);
+
+      // Re-anchor playback state onto the new first reel so the observer/player sync cleanly
+      lastPlayedIdRef.current = null;
+      if (data.length > 0) {
+        setActiveReelId(data[0].id);
+        setIsPlaying(true);
+      }
+    } catch (err) {
+      console.error("Error refreshing reels:", err);
+    }
+  };
+
+  const {
+    pullDistance: reelsPullDistance,
+    isRefreshing: isReelsRefreshing,
+    threshold: reelsPullThreshold,
+    containerRef: reelsContainerRef,
+  } = usePullToRefresh(refreshReels);
 
   // Auto-Scroll Bridge Effect
   // When the new batch of reels hits the screen, this listener instantly smooth-scrolls 
@@ -602,9 +641,18 @@ function ReelsContent() {
     : "https://play.google.com/store/apps/details?id=com.glidesports.app";
 
   return (
-    // Swapped h-screen for h-[100dvh] to prevent layout jumps on mobile browsers
-    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[100dvh] overflow-hidden flex flex-col">
-      
+    // Swapped a plain screen-height unit for the dynamic viewport height unit, to prevent
+    // layout jumps on mobile browsers. Subtracts --app-banner-height because <body> already
+    // reserves that space at the top
+    // for the sticky banner - without this, this "one full viewport" box would extend past
+    // the true bottom of the screen by the banner's height, dragging the icon column and
+    // metadata text down with it (worse on some navigations than others because mobile
+    // Chrome's dvh value shifts as its own address bar shows/hides between navigations).
+    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[calc(100dvh_-_var(--app-banner-height))] overflow-hidden flex flex-col">
+
+      {/* Pull-to-Refresh Indicator - tracks the drag gesture detected on the scroll container */}
+      <PullToRefreshIndicator pullDistance={reelsPullDistance} isRefreshing={isReelsRefreshing} threshold={reelsPullThreshold} />
+
       {/* Desktop Navigation Bar (Hidden on Mobile) */}
       <div className="absolute top-10 w-full z-50 p-6 hidden md:flex justify-center pointer-events-none transition-all">
         <div className="pointer-events-auto flex gap-6 md:gap-8">
@@ -634,7 +682,9 @@ function ReelsContent() {
       ) : (
         /* The Scroll Snapping Container */
         // Removing pb-20 on mobile so the video stays entirely full screen edge-to-edge
-        <div className="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
+        // overscroll-y-contain stops the browser's native pull-to-refresh/bounce from
+        // firing alongside our own pull-to-refresh gesture below
+        <div ref={reelsContainerRef} className="flex-1 overflow-y-scroll overscroll-y-contain snap-y snap-mandatory scrollbar-hide">
           
           {/* ADDED BRACES AROUND MAP FUNCTION FOR IF-STATEMENTS */}
           {reels.map((reel, index) => {
@@ -646,7 +696,7 @@ function ReelsContent() {
                 <div 
                   key="promo-card" 
                   data-id="-1" // <-- Explicitly set to -1 to safely trigger the pause logic
-                  className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative bg-black"
+                  className="reel-container h-[calc(100dvh_-_var(--app-banner-height))] w-full flex flex-col items-center justify-center snap-center snap-always relative bg-black"
                 >
                   {/* Reconfigured for app pre-launch footprint */}
                   <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-black via-purple-900/40 to-black border-t border-purple-500/30">
@@ -679,7 +729,7 @@ function ReelsContent() {
                 data-video-id={reel.video_id}
                 
                 // Added overflow-hidden to the outermost container to trap any bleeding layers from the 120% scaled iframe
-                className="reel-container h-[100dvh] w-full flex flex-col items-center justify-center snap-center snap-always relative overflow-hidden will-change-transform"
+                className="reel-container h-[calc(100dvh_-_var(--app-banner-height))] w-full flex flex-col items-center justify-center snap-center snap-always relative overflow-hidden will-change-transform"
                 
                 style={{ transform: 'translateZ(0)' }}
               >
@@ -787,7 +837,11 @@ function ReelsContent() {
                   </div>
 
                   {/* Right-Side Action Bar (Like, Comment, and Share) */}
-                  <div className="absolute right-4 bottom-28 md:bottom-24 flex flex-col items-center space-y-4 z-40 pointer-events-auto">
+                  {/* Mobile offset grows by the safe-area inset, same as the metadata text
+                      block and the bottom nav bar below, so the share button never ends up
+                      under the (safe-area-expanded) nav bar on tall-inset devices. Desktop
+                      keeps a flat offset since the framed card layout has no safe area. */}
+                  <div className="absolute right-4 bottom-[calc(7rem_+_var(--app-safe-bottom))] md:bottom-24 flex flex-col items-center space-y-4 z-40 pointer-events-auto">
                     
                     {/* Like Button */}
                     <button 
@@ -864,8 +918,10 @@ function ReelsContent() {
                   </div>
 
                   {/* Video Metadata Overlay */}
-                  {/* Pushed the metadata text up slightly on mobile (pb-20) so it doesn't get hidden behind the bottom navigation */}
-                  <div className="absolute bottom-0 left-0 w-full p-6 pb-20 md:pb-6 pr-20 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-30">
+                  {/* Pushed the metadata text up on mobile so it doesn't get hidden behind the
+                      bottom navigation. Grows by the safe-area inset (same var used on the nav
+                      bar itself) for the same reason the nav bar's own height does */}
+                  <div className="absolute bottom-0 left-0 w-full p-6 pb-[calc(5rem_+_var(--app-safe-bottom))] md:pb-6 pr-20 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-30">
                     <h3 className="text-lg font-bold text-white leading-snug drop-shadow-lg">{reel.title}</h3>
                     <p className="text-sm text-gray-300 mt-2 font-medium bg-white/10 backdrop-blur-sm inline-block px-3 py-1 rounded-full shadow-sm">@{reel.channel_name}</p>
                   </div>
@@ -1045,7 +1101,10 @@ function ReelsContent() {
 
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
       {/* On reels, this bar overlays the video slightly with a sleek gradient, matching the TikTok/Instagram aesthetic */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-gradient-to-t from-black/95 via-black/70 to-transparent flex justify-around items-center h-[72px] z-[60] pb-[env(safe-area-inset-bottom)] px-4">
+      {/* h-[72px] is the CONTENT height; the safe-area inset is added on top of that,
+          not carved out of it - Tailwind's border-box sizing means a fixed height plus bottom
+          padding alone would shrink the usable content area on tall insets */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-gradient-to-t from-black/95 via-black/70 to-transparent flex justify-around items-center h-[calc(72px_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4">
         <Link href="/" className="text-gray-300 font-bold text-sm hover:text-white transition-colors pt-2">
           Posts
         </Link>
