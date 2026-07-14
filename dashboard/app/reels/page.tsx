@@ -20,6 +20,7 @@ import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch, API_BASE_URL } from '@/lib/api';
+import BottomNav from '@/components/BottomNav';
 
 function ReelsContent() {
   // 2. STATE MANAGEMENT
@@ -1087,20 +1088,7 @@ function ReelsContent() {
 
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
       {/* On reels, this bar overlays the video slightly with a sleek gradient, matching the TikTok/Instagram aesthetic */}
-      {/* h-[72px] is the CONTENT height; the safe-area inset is added on top of that,
-          not carved out of it - Tailwind's border-box sizing means a fixed height plus bottom
-          padding alone would shrink the usable content area on tall insets */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-gradient-to-t from-black/95 via-black/70 to-transparent flex justify-around items-center h-[calc(72px_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4">
-        <Link href="/" className="text-gray-300 font-bold text-sm hover:text-white transition-colors pt-2">
-          Posts
-        </Link>
-        <span className="text-white font-bold text-sm flex flex-col items-center pt-2 border-t-2 border-white">
-          Reels
-        </span>
-        <Link href="/match_center" className="text-gray-300 font-bold text-sm hover:text-white transition-colors pt-2">
-          Match Center
-        </Link>
-      </div>
+      <BottomNav active="reels" variant="overlay" />
 
     </main>
   );
