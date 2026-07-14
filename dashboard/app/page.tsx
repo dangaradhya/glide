@@ -21,6 +21,7 @@ import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch, API_BASE_URL } from '@/lib/api';
+import BottomNav from '@/components/BottomNav';
 
 // A simple one-time lock for the initial page load. 
 // It resets perfectly on a hard refresh, keeping your desired behavior intact!
@@ -999,20 +1000,7 @@ export default function Home() {
       </div>
       
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
-      {/* h-16 (4rem) is the CONTENT height; the safe-area inset is added on top of that,
-          not carved out of it - Tailwind's border-box sizing means a fixed height plus bottom
-          padding alone would shrink the usable content area on tall insets */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-[calc(4rem_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4">
-        <Link href="/" className="text-gray-900 dark:text-white font-bold text-sm flex flex-col items-center pt-1 border-t-2 border-purple-500">
-          Posts
-        </Link>
-        <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
-          Reels
-        </Link>
-        <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
-          Match Center
-        </Link>
-      </div>
+      <BottomNav active="posts" />
 
     </main>
   );

@@ -7,6 +7,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import AuthButton from '@/components/AuthButton';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch } from '@/lib/api';
+import BottomNav from '@/components/BottomNav';
 
 // Added specific destination URLs and visual gradient colors for each league
 interface League {
@@ -310,17 +311,7 @@ export default function LiveUpdatesPage() {
       {/* h-16 (4rem) is the CONTENT height; the safe-area inset is added on top of that,
           not carved out of it - Tailwind's border-box sizing means a fixed height plus bottom
           padding alone would shrink the usable content area on tall insets */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-[calc(4rem_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4">
-        <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
-          Posts
-        </Link>
-        <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-sm hover:text-gray-900 dark:hover:text-white pt-1">
-          Reels
-        </Link>
-        <span className="text-gray-900 dark:text-white font-bold text-sm flex flex-col items-center pt-1 border-t-2 border-purple-500">
-          Match Center
-        </span>
-      </div>
+      <BottomNav active="match_center" />
 
     </main>
   );
