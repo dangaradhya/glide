@@ -518,16 +518,21 @@ app.get('/api/posts', (req, res) => {
     res.header('Expires', '-1');
     res.header('Pragma', 'no-cache');
 
-    // Extract query parameters with fallbacks (default to page 1, limit 5)
-    // We use a small limit of 5 so you can easily test the "Load More" button!
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 5;
-    
-    // Calculate the offset (e.g., if page 2 and limit 5, skip the first 5 records)
-    const offset = (page - 1) * limit;
+    // Cursor-based pagination: instead of "skip N, take limit" (which is purely positional
+    // and silently skips or duplicates posts if a new one lands between two page fetches -
+    // the hourly scraper makes this a real, recurring scenario, not a hypothetical), the
+    // client sends back the (timestamp, id) of the last post it saw, and we return
+    // everything strictly older than that. The compound key matters because
+    // CURRENT_TIMESTAMP only has second-level resolution - two posts could share a
+    // timestamp, and id (unique, autoincrement) breaks the tie so no post can ever fall
+    // through the gap between two pages.
+    const limit = parseInt(req.query.limit) || 20;
+    const cursorTimestamp = req.query.cursorTimestamp;
+    const cursorId = parseInt(req.query.cursorId);
+    const hasCursor = !!cursorTimestamp && !isNaN(cursorId);
 
-    // Authentication Check - We check if the frontend sent a token. If they did, 
-    // we figure out who they are. This allows us to personalize the feed in the future 
+    // Authentication Check - We check if the frontend sent a token. If they did,
+    // we figure out who they are. This allows us to personalize the feed in the future
     // (e.g., show which posts they've liked).
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -543,28 +548,32 @@ app.get('/api/posts', (req, res) => {
         }
     }
 
+    const cursorClause = hasCursor ? `AND (timestamp < ? OR (timestamp = ? AND id < ?))` : '';
+
     // Dynamic SQL based on Auth Status
-    const sql = userId 
-        ? `SELECT posts.*, 
+    const sql = userId
+        ? `SELECT posts.*,
              EXISTS(SELECT 1 FROM post_likes WHERE post_id = posts.id AND user_id = ?) AS userLiked,
              EXISTS(SELECT 1 FROM saved_posts WHERE post_id = posts.id AND user_id = ?) AS userSaved,
              (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
-           FROM posts 
-           WHERE timestamp >= datetime('now', '-7 days') 
-           ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+           FROM posts
+           WHERE timestamp >= datetime('now', '-7 days') ${cursorClause}
+           ORDER BY timestamp DESC, id DESC LIMIT ?`
         : `SELECT posts.*, 0 AS userLiked, 0 AS userSaved,
-             (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount 
-           FROM posts 
-           WHERE timestamp >= datetime('now', '-7 days') 
-           ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+             (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
+           FROM posts
+           WHERE timestamp >= datetime('now', '-7 days') ${cursorClause}
+           ORDER BY timestamp DESC, id DESC LIMIT ?`;
 
-    // The parameters we pass to the database depend on whether we have a userId or not. 
-    // If we do, we need to include it for the subquery that checks if the user liked each post.
-    // Because we added a second ? for the userSaved subquery, we must pass userId TWICE in the array 
-    // (once for userLiked and once for userSaved), followed by the limit and offset.
-    const params = userId ? [userId, userId, limit, offset] : [limit, offset];
-    
-    // Finally, we execute the query. If there's an error, we log it and return a 500 status. 
+    // The parameters we pass to the database depend on whether we have a userId and/or a
+    // cursor. Order matters: userId (x2, for the userLiked/userSaved subqueries) first,
+    // then the cursor values (timestamp appears twice - once for the strict "older than"
+    // check, once for the same-timestamp tiebreak), then limit last.
+    const authParams = userId ? [userId, userId] : [];
+    const cursorParams = hasCursor ? [cursorTimestamp, cursorTimestamp, cursorId] : [];
+    const params = [...authParams, ...cursorParams, limit];
+
+    // Finally, we execute the query. If there's an error, we log it and return a 500 status.
     // If it's successful, we return the rows of posts as JSON.
     db.all(sql, params, (err, rows) => {
         if (err) {
@@ -582,7 +591,13 @@ app.get('/api/posts', (req, res) => {
             userSaved: row.userSaved === 1
         }));
 
-        res.status(200).json(formattedRows);
+        // The cursor for the NEXT page is just the (timestamp, id) of the last post in
+        // THIS page - null once there's nothing left, which the frontend uses as its
+        // "no more pages" signal.
+        const lastRow = formattedRows[formattedRows.length - 1];
+        const nextCursor = lastRow ? { timestamp: lastRow.timestamp, id: lastRow.id } : null;
+
+        res.status(200).json({ posts: formattedRows, nextCursor });
     });
 });
 
