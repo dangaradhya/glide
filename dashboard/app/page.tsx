@@ -40,7 +40,10 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState<string>('All'); // New state for category filter
 
   // Pagination State
-  const [page, setPage] = useState(1); // Tracks current page
+  // Cursor-based instead of a page number: anchors to the last post actually seen
+  // (timestamp + id) rather than counting positions, so a new post landing mid-session
+  // (the scraper runs hourly) can never silently push an unseen post out of range.
+  const cursorRef = useRef<{ timestamp: string; id: number } | null>(null);
   const [hasMore, setHasMore] = useState(true); // Turns off the button when we hit the end of the DB
   const [loadingMore, setLoadingMore] = useState(false); // Spinner for the Load More button
 
@@ -85,6 +88,56 @@ export default function Home() {
     } else {
       setIsAuthenticated(false);
     }
+  }, []);
+
+  // 3. THE NETWORK REQUEST
+  // Cursor-driven: fetchPosts always asks for "whatever's older than the last post we
+  // saw" (cursorRef), rather than a page number. isInitial just controls the artificial
+  // infinite-scroll delay - it's true only for the very first, immediate load. Declared
+  // here (before any effect that references it) since several effects below call it.
+  const fetchPosts = async (isInitial: boolean) => {
+    try {
+      // Artificial half-second delay for infinite scroll feel
+      if (!isInitial) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      const cursor = cursorRef.current;
+      const cursorParam = cursor
+        ? `&cursorTimestamp=${encodeURIComponent(cursor.timestamp)}&cursorId=${cursor.id}`
+        : '';
+      const res = await apiFetch(`/api/posts?limit=20${cursorParam}`);
+      const data = await res.json();
+
+      if (data.posts.length === 0) {
+        // If the database returns an empty array, we reached the end!
+        setHasMore(false);
+      } else {
+        // Append the new data to the EXISTING array, rather than replacing it.
+        // We use a quick filter to ensure React's StrictMode doesn't accidentally render duplicate IDs.
+        setPosts(prevPosts => {
+          const newPosts = [...prevPosts];
+          data.posts.forEach((newPost: any) => {
+            if (!newPosts.find(p => p.id === newPost.id)) {
+              newPosts.push(newPost);
+            }
+          });
+          return newPosts;
+        });
+        cursorRef.current = data.nextCursor;
+      }
+      setLoading(false);
+      setLoadingMore(false);
+    } catch (err) {
+      console.error("Error fetching posts:", err);
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  // Runs once on mount to load the first batch.
+  useEffect(() => {
+    fetchPosts(true);
   }, []);
 
   // Debounced Search Effect (Prevents database overload by waiting 300ms after typing stops)
@@ -139,7 +192,7 @@ export default function Home() {
     } else if (hasMore && !loadingMore && !loading) {
       // Target is not in the DOM yet. Force the pagination to fetch the next page immediately.
       setLoadingMore(true);
-      setPage(prev => prev + 1);
+      fetchPosts(false);
     } else if (!hasMore) {
       // Safety catch: We hit the end of the database and the post wasn't found
       alert("Could not locate this post in the feed.");
@@ -172,75 +225,20 @@ export default function Home() {
     }
   }, []);
 
-  // 3. THE NETWORK REQUEST 
-  // Refactored Fetch Logic to accept a page number
-  const fetchPosts = async (pageNum: number) => {
-    try {
-      // Artificial half-second delay for infinite scroll feel
-      if (pageNum > 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
-      const res = await apiFetch(`/api/posts?page=${pageNum}&limit=5`);
-      const data = await res.json();
-
-      if (data.length === 0) {
-        // If the database returns an empty array, we reached the end!
-        setHasMore(false);
-      } else {
-        // Append the new data to the EXISTING array, rather than replacing it.
-        // We use a quick filter to ensure React's StrictMode doesn't accidentally render duplicate IDs.
-        setPosts(prevPosts => {
-          const newPosts = [...prevPosts];
-          data.forEach((newPost: any) => {
-            if (!newPosts.find(p => p.id === newPost.id)) {
-              newPosts.push(newPost);
-            }
-          });
-          return newPosts;
-        });
-      }
-      setLoading(false);
-      setLoadingMore(false);
-    } catch (err) {
-      console.error("Error fetching posts:", err);
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  };
-
-  // Set right before a refresh-triggered setPage(1) below, so the pagination effect below
-  // can tell "page reset by a refresh that already fetched page 1" apart from a normal
-  // page change, and skip firing a redundant duplicate fetch for the page it just skipped to.
-  const skipNextPageFetchRef = useRef(false);
-
-  // Replaced the interval with a page dependency
-  // This runs automatically on initial load (page=1), and whenever the 'page' state changes.
-  useEffect(() => {
-    if (skipNextPageFetchRef.current) {
-      skipNextPageFetchRef.current = false;
-      return;
-    }
-    fetchPosts(page);
-  }, [page]);
-
   // Pull-to-Refresh Handler
   // Unlike fetchPosts (which APPENDS the next page), this REPLACES the entire feed with
-  // a fresh "page 1" fetch, ordered by timestamp DESC. Since new posts really do land
+  // a fresh fetch from the top, ordered by timestamp DESC. Since new posts really do land
   // roughly hourly from the scraper, this is a genuine refresh (not just a visual trick)
-  // for the Posts feed - it will surface whatever the newest 5 posts actually are right now.
+  // for the Posts feed - it will surface whatever the newest posts actually are right now.
   const refreshFeed = async () => {
     if (loadingMore) return; // Don't clobber an in-flight "load more" pagination request
     try {
-      const res = await apiFetch(`/api/posts?page=1&limit=5`);
+      const res = await apiFetch(`/api/posts?limit=20`);
       const data = await res.json();
 
-      setPosts(data);
-      // If the user had paginated past page 1 before pulling to refresh, setPage(1) below
-      // would otherwise re-fire the effect above and fetch page 1 a second time - we just did.
-      if (page !== 1) skipNextPageFetchRef.current = true;
-      setPage(1);
-      setHasMore(data.length > 0);
+      setPosts(data.posts);
+      cursorRef.current = data.nextCursor;
+      setHasMore(data.posts.length > 0);
     } catch (err) {
       console.error("Error refreshing feed:", err);
     }
@@ -252,14 +250,14 @@ export default function Home() {
   useEffect(() => {
     if (!hasMore || loadingMore) return;
 
-      // We create a new IntersectionObserver that watches the "sentinel" div at the bottom 
-      // of the feed. When that div comes into view (meaning the user has scrolled to the bottom), 
-      // we set 'loadingMore' to true and increment the 'page' state, which triggers a new fetch.
+      // We create a new IntersectionObserver that watches the "sentinel" div at the bottom
+      // of the feed. When that div comes into view (meaning the user has scrolled to the bottom),
+      // we set 'loadingMore' to true and fetch the next batch using the current cursor.
       const observer = new IntersectionObserver(
         (entries) => {
           if (entries[0].isIntersecting) {
             setLoadingMore(true);
-            setPage((prev) => prev + 1);
+            fetchPosts(false);
           }
         },
         { threshold: 0.1 }
@@ -671,7 +669,11 @@ export default function Home() {
         <div className="w-full">
           
           {/* 8. CONDITIONAL RENDERING */}
-          {loading && page === 1 ? (
+          {/* `loading` alone is sufficient here: it only ever flips true -> false once,
+              on the very first fetchPosts() completion, and nothing sets it back to true
+              afterward (refreshFeed doesn't touch it) - there's no longer a "page number"
+              to separately check now that pagination is cursor-based. */}
+          {loading ? (
             // Show this while waiting for the Express server to reply
             <p className="text-center text-gray-500 dark:text-gray-400 animate-pulse mt-20">Loading the latest news...</p>
           ) : posts.length === 0 ? (
