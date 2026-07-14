@@ -509,8 +509,40 @@ app.post('/api/posts', verifyScraper, (req, res) => {
     });
 });
 
+// Maps each Match Center league_id to the sport_category value(s) our AI-rewrite pipeline
+// actually uses for that sport, so a user's explicit league picks can boost matching posts
+// in their feed. Built from real observed sport_category values in production, not guessed
+// - notably, the AI labels soccer inconsistently ("Football" vs "Soccer" both occur), so
+// both are listed everywhere that applies. This is necessarily sport-level, not
+// league-level: posts are only ever tagged with a broad sport (e.g. "Football"), never a
+// specific league, so picking "Premier League" boosts ALL football posts, not Premier
+// League ones specifically - true league-level personalization would need the AI pipeline
+// to extract which league an article is about, out of scope here.
+const LEAGUE_TO_SPORT_CATEGORIES = {
+    nba: ['Basketball', 'WNBA'],
+    mlb: ['Baseball'],
+    nfl: ['NFL', 'American Football'],
+    nhl: ['Hockey', 'Ice Hockey'],
+    cricket: ['Cricket'],
+    atp: ['Tennis'],
+    ufc: ['MMA'],
+    f1: ['Formula 1', 'Motorsport'],
+    premier_league: ['Football', 'Soccer'],
+    serie_a: ['Football', 'Soccer'],
+    la_liga: ['Football', 'Soccer'],
+    bundesliga: ['Football', 'Soccer'],
+    ligue_1: ['Football', 'Soccer'],
+    champions_league: ['Football', 'Soccer'],
+    europa_league: ['Football', 'Soccer'],
+    conference_league: ['Football', 'Soccer'],
+    world_cup: ['Football', 'Soccer'],
+    euros: ['Football', 'Soccer'],
+    copa_america: ['Football', 'Soccer'],
+    nations_league: ['Football', 'Soccer'],
+};
+
 // 9. READING DATA (The GET Route - 'read operation')
-// Big Picture: When a user opens Glide on their phone or laptop, the UI is completely empty. 
+// Big Picture: When a user opens Glide on their phone or laptop, the UI is completely empty.
 // The frontend immediately fires off a GET request to your server asking for the latest data to display.
 app.get('/api/posts', (req, res) => {
     // Force Cloudflare and mobile browsers to NEVER cache this feed
@@ -550,55 +582,101 @@ app.get('/api/posts', (req, res) => {
 
     const cursorClause = hasCursor ? `AND (timestamp < ? OR (timestamp = ? AND id < ?))` : '';
 
-    // Dynamic SQL based on Auth Status
-    const sql = userId
-        ? `SELECT posts.*,
-             EXISTS(SELECT 1 FROM post_likes WHERE post_id = posts.id AND user_id = ?) AS userLiked,
-             EXISTS(SELECT 1 FROM saved_posts WHERE post_id = posts.id AND user_id = ?) AS userSaved,
-             (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
-           FROM posts
-           WHERE timestamp >= datetime('now', '-7 days') ${cursorClause}
-           ORDER BY timestamp DESC, id DESC LIMIT ?`
-        : `SELECT posts.*, 0 AS userLiked, 0 AS userSaved,
-             (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
-           FROM posts
-           WHERE timestamp >= datetime('now', '-7 days') ${cursorClause}
-           ORDER BY timestamp DESC, id DESC LIMIT ?`;
+    // Runs the actual feed query once we know which sport categories (if any) to boost for
+    // this user. Boosting only re-sorts the DISPLAY ORDER within the already
+    // cursor-paginated chronological window - it never changes which posts are IN that
+    // window, so the pagination-correctness fix above is completely unaffected by it.
+    const runFeedQuery = (preferredCategories) => {
+        const hasPreferences = preferredCategories.length > 0;
+        const boostPlaceholders = hasPreferences ? preferredCategories.map(() => '?').join(',') : '';
+        const orderClause = hasPreferences
+            ? `(CASE WHEN sport_category IN (${boostPlaceholders}) THEN 0 ELSE 1 END), timestamp DESC, id DESC`
+            : `timestamp DESC, id DESC`;
 
-    // The parameters we pass to the database depend on whether we have a userId and/or a
-    // cursor. Order matters: userId (x2, for the userLiked/userSaved subqueries) first,
-    // then the cursor values (timestamp appears twice - once for the strict "older than"
-    // check, once for the same-timestamp tiebreak), then limit last.
-    const authParams = userId ? [userId, userId] : [];
-    const cursorParams = hasCursor ? [cursorTimestamp, cursorTimestamp, cursorId] : [];
-    const params = [...authParams, ...cursorParams, limit];
+        // Dynamic SQL based on Auth Status
+        const innerSql = userId
+            ? `SELECT posts.*,
+                 EXISTS(SELECT 1 FROM post_likes WHERE post_id = posts.id AND user_id = ?) AS userLiked,
+                 EXISTS(SELECT 1 FROM saved_posts WHERE post_id = posts.id AND user_id = ?) AS userSaved,
+                 (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
+               FROM posts
+               WHERE timestamp >= datetime('now', '-7 days') ${cursorClause}
+               ORDER BY timestamp DESC, id DESC LIMIT ?`
+            : `SELECT posts.*, 0 AS userLiked, 0 AS userSaved,
+                 (SELECT COUNT(*) FROM comments WHERE post_id = posts.id) AS commentCount
+               FROM posts
+               WHERE timestamp >= datetime('now', '-7 days') ${cursorClause}
+               ORDER BY timestamp DESC, id DESC LIMIT ?`;
 
-    // Finally, we execute the query. If there's an error, we log it and return a 500 status.
-    // If it's successful, we return the rows of posts as JSON.
-    db.all(sql, params, (err, rows) => {
-        if (err) {
-            console.error("Error fetching data:", err.message);
-            return res.status(500).json({ error: 'Failed to retrieve feed' });
-        }
+        // The inner query decides WHICH posts are in this page (pure chronological cursor
+        // pagination, untouched by personalization). The outer query only re-sorts the
+        // DISPLAY order of that already-fixed set of rows.
+        const sql = `SELECT * FROM (${innerSql}) AS windowed ORDER BY ${orderClause}`;
 
-        // SQLite returns 1 for true and 0 for false. We map it to standard strict booleans for React.
-        // We take each row of the result and create a new object that has all the same fields (...row) but overrides 'userLiked' to be a boolean.
-        // This way, the frontend can easily check if userLiked is true or false without having to remember that 1 means liked and 0 means not liked.
-        // We do the same for 'userSaved' if we want to use that in the frontend as well.
-        const formattedRows = rows.map(row => ({
-            ...row,
-            userLiked: row.userLiked === 1,
-            userSaved: row.userSaved === 1
-        }));
+        // The parameters we pass to the database depend on whether we have a userId and/or
+        // a cursor. Order matters: userId (x2, for the userLiked/userSaved subqueries)
+        // first, then the cursor values (timestamp appears twice - once for the strict
+        // "older than" check, once for the same-timestamp tiebreak), then limit - all of
+        // that is for the INNER query. The boost category params come last, since the
+        // CASE WHEN they belong to is in the OUTER query, textually after the inner one.
+        const authParams = userId ? [userId, userId] : [];
+        const cursorParams = hasCursor ? [cursorTimestamp, cursorTimestamp, cursorId] : [];
+        const boostParams = hasPreferences ? preferredCategories : [];
+        const params = [...authParams, ...cursorParams, limit, ...boostParams];
 
-        // The cursor for the NEXT page is just the (timestamp, id) of the last post in
-        // THIS page - null once there's nothing left, which the frontend uses as its
-        // "no more pages" signal.
-        const lastRow = formattedRows[formattedRows.length - 1];
-        const nextCursor = lastRow ? { timestamp: lastRow.timestamp, id: lastRow.id } : null;
+        // Finally, we execute the query. If there's an error, we log it and return a 500 status.
+        // If it's successful, we return the rows of posts as JSON.
+        db.all(sql, params, (err, rows) => {
+            if (err) {
+                console.error("Error fetching data:", err.message);
+                return res.status(500).json({ error: 'Failed to retrieve feed' });
+            }
 
-        res.status(200).json({ posts: formattedRows, nextCursor });
-    });
+            // SQLite returns 1 for true and 0 for false. We map it to standard strict booleans for React.
+            // We take each row of the result and create a new object that has all the same fields (...row) but overrides 'userLiked' to be a boolean.
+            // This way, the frontend can easily check if userLiked is true or false without having to remember that 1 means liked and 0 means not liked.
+            // We do the same for 'userSaved' if we want to use that in the frontend as well.
+            const formattedRows = rows.map(row => ({
+                ...row,
+                userLiked: row.userLiked === 1,
+                userSaved: row.userSaved === 1
+            }));
+
+            // The next-page cursor has to anchor to the CHRONOLOGICALLY oldest post in this
+            // batch, not whichever row happens to land last after the preference re-sort
+            // above - otherwise personalization would silently break pagination (skipping
+            // or repeating posts) the moment it reorders anything.
+            const chronologicallyOldest = formattedRows.reduce((oldest, row) => {
+                if (!oldest) return row;
+                if (row.timestamp < oldest.timestamp) return row;
+                if (row.timestamp === oldest.timestamp && row.id < oldest.id) return row;
+                return oldest;
+            }, null);
+            const nextCursor = chronologicallyOldest
+                ? { timestamp: chronologicallyOldest.timestamp, id: chronologicallyOldest.id }
+                : null;
+
+            res.status(200).json({ posts: formattedRows, nextCursor });
+        });
+    };
+
+    // Personalization only applies to logged-in users who've saved league preferences in
+    // Match Center - guests, and logged-in users with no preferences saved, get the exact
+    // same plain chronological feed as before, completely unchanged.
+    if (userId) {
+        db.all(`SELECT league_id FROM user_preferences WHERE user_id = ?`, [userId], (err, prefRows) => {
+            if (err) {
+                console.error("Error fetching preferences for personalization:", err.message);
+                return runFeedQuery([]);
+            }
+            const preferredCategories = [...new Set(
+                prefRows.flatMap(row => LEAGUE_TO_SPORT_CATEGORIES[row.league_id] || [])
+            )];
+            runFeedQuery(preferredCategories);
+        });
+    } else {
+        runFeedQuery([]);
+    }
 });
 
 // 10. SOCIAL INTERACTION ROUTES (Protected by authenticateToken)
