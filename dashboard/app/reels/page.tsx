@@ -18,6 +18,8 @@ import { Share } from '@capacitor/share';
 // Pull-to-Refresh gesture hook + its shared visual indicator
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
+// Shared API client - base URL + auto-attached auth header, see lib/api.ts
+import { apiFetch, API_BASE_URL } from '@/lib/api';
 
 function ReelsContent() {
   // 2. STATE MANAGEMENT
@@ -119,15 +121,9 @@ function ReelsContent() {
       // Generate a string of all the video IDs currently sitting in React state
       const currentIds = reels.map(r => r.id).join(',');
 
-      // Grab the token and attach it to the GET request headers
-      const token = localStorage.getItem('glide_token');
-      const headers: Record<string, string>= token ? { 'Authorization': `Bearer ${token}` } : {};
-
       // Forward targetReelId directly into your server endpoint layout parameters
       const urlParam = targetReelId && reels.length === 0 ? `&reelId=${targetReelId}` : '';
-      const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=10&exclude=${currentIds}${urlParam}`, {
-        headers
-      });
+      const res = await apiFetch(`/api/reels?limit=10&exclude=${currentIds}${urlParam}`);
       const data = await res.json();
       
       // If no more reels are returned, we set hasMore to false to stop further loading.
@@ -187,10 +183,7 @@ function ReelsContent() {
   const refreshReels = async () => {
     if (loadingMore) return; // Don't clobber an in-flight "load more" pagination request
     try {
-      const token = localStorage.getItem('glide_token');
-      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-
-      const res = await fetch(`https://glide-sports.onrender.com/api/reels?limit=10`, { headers });
+      const res = await apiFetch(`/api/reels?limit=10`);
       const data = await res.json();
 
       setReels(data);
@@ -378,9 +371,9 @@ function ReelsContent() {
 
     // BACKEND UPDATE: We then send a request to the backend to update the like status in the database.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${id}/like`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+      const res = await apiFetch(`/api/reels/${id}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
       });
 
       // ERROR HANDLING: If the response indicates that the user's session has expired (401 or 403), we alert the user, 
@@ -446,12 +439,9 @@ function ReelsContent() {
 
     // BACKEND UPDATE: We then send a POST request to the backend to update the save status in the database.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${id}/save`, {
+      const res = await apiFetch(`/api/reels/${id}/save`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
       
       // ERROR HANDLING: If the response indicates that the user's session has expired (401 or 403), we alert the user, 
@@ -483,7 +473,8 @@ function ReelsContent() {
     // Tell the backend to increment the share counter (Background process)
     // We keep the fetch for your analytics, but REMOVED the setReels UI increment
     try {
-        fetch(`https://glide-sports.onrender.com/api/reels/${id}/share`, { method: 'POST' });
+        // Deliberately plain fetch, not apiFetch: this route never sends an auth header today
+        fetch(`${API_BASE_URL}/api/reels/${id}/share`, { method: 'POST' });
     } catch (err) {
         console.error("Failed to track share in DB", err);
     }
@@ -518,7 +509,8 @@ function ReelsContent() {
 
     // Fetch comments for this reel from the backend
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${reel.id}/comments`);
+      // Deliberately plain fetch, not apiFetch: this route never sends an auth header today
+      const res = await fetch(`${API_BASE_URL}/api/reels/${reel.id}/comments`);
       if (res.ok) {
         const data = await res.json();
         setComments(data);
@@ -542,12 +534,9 @@ function ReelsContent() {
 
     // OPTIMISTIC UI UPDATE: We immediately add the new comment to the comments state to reflect it in the UI for instant feedback.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/reels/${activeReel.id}/comments`, {
+      const res = await apiFetch(`/api/reels/${activeReel.id}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: newCommentText })
       });
 
@@ -575,15 +564,14 @@ function ReelsContent() {
   // it updates the comments state to reflect the change in the UI and closes the edit mode. If there is an error, it alerts the user.
   const handleEditSubmit = async (commentId: number) => {
     if (!editCommentText.trim()) return;
-    const token = localStorage.getItem('glide_token');
-    
-    // We send a PUT request to the backend with the updated comment text. If the response is successful, we update the comments 
-    // state by mapping through the current comments and replacing the edited comment with the new text. We then exit edit mode 
+
+    // We send a PUT request to the backend with the updated comment text. If the response is successful, we update the comments
+    // state by mapping through the current comments and replacing the edited comment with the new text. We then exit edit mode
     // by setting editingCommentId to null. If there is an error during the fetch request, we catch it and log it to the console.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/reel_comments/${commentId}`, {
+      const res = await apiFetch(`/api/reel_comments/${commentId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: editCommentText })
       });
 
@@ -604,15 +592,13 @@ function ReelsContent() {
   // the comments state to remove the deleted comment and decrements the comment count on the main feed. If there is an error, it alerts the user.
   const handleDeleteComment = async (commentId: number) => {
     if (!confirm("Are you sure you want to delete this take?")) return;
-    const token = localStorage.getItem('glide_token');
 
     // We send a DELETE request to the backend to remove the comment. If the response is successful, we update the comments state by filtering out
-    // the deleted comment. We also update the reels state to decrement the comment count for the active reel. If there is an error during the fetch 
+    // the deleted comment. We also update the reels state to decrement the comment count for the active reel. If there is an error during the fetch
     // request, we catch it and log it to the console.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/reel_comments/${commentId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      const res = await apiFetch(`/api/reel_comments/${commentId}`, {
+        method: 'DELETE'
       });
 
       // If the deletion is successful, we remove the comment from the comments state and decrement the comment count on the main feed for the active reel.
