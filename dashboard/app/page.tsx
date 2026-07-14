@@ -19,6 +19,8 @@ import { Share } from '@capacitor/share';
 // Pull-to-Refresh gesture hook + its shared visual indicator
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
+// Shared API client - base URL + auto-attached auth header, see lib/api.ts
+import { apiFetch, API_BASE_URL } from '@/lib/api';
 
 // A simple one-time lock for the initial page load. 
 // It resets perfectly on a hard refresh, keeping your desired behavior intact!
@@ -97,7 +99,9 @@ export default function Home() {
     const debounceTimer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`https://glide-sports.onrender.com/api/search?q=${encodeURIComponent(searchQuery)}`);
+        // Deliberately plain fetch, not apiFetch: this route never sends an auth header
+        // today (even when logged in), and search doesn't need one anyway
+        const res = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(searchQuery)}`);
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data);
@@ -176,13 +180,7 @@ export default function Home() {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      // Grab the token and attach it to the GET request headers
-      const token = localStorage.getItem('glide_token');
-      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-
-      const res = await fetch(`https://glide-sports.onrender.com/api/posts?page=${pageNum}&limit=5`, { 
-        headers 
-      });
+      const res = await apiFetch(`/api/posts?page=${pageNum}&limit=5`);
       const data = await res.json();
 
       if (data.length === 0) {
@@ -233,10 +231,7 @@ export default function Home() {
   const refreshFeed = async () => {
     if (loadingMore) return; // Don't clobber an in-flight "load more" pagination request
     try {
-      const token = localStorage.getItem('glide_token');
-      const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {};
-
-      const res = await fetch(`https://glide-sports.onrender.com/api/posts?page=1&limit=5`, { headers });
+      const res = await apiFetch(`/api/posts?page=1&limit=5`);
       const data = await res.json();
 
       setPosts(data);
@@ -297,12 +292,9 @@ export default function Home() {
 
     // POST request to the backend to update the like in the database
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${id}/like`, {
-        method: 'POST', 
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        }
+      const res = await apiFetch(`/api/posts/${id}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
       });
 
       // If the token is invalid/expired, we alert the user, clear their session, and rollback the visual toggle.
@@ -370,12 +362,9 @@ export default function Home() {
 
     // POST request to the backend to update the save status in the database
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${id}/save`, {
+      const res = await apiFetch(`/api/posts/${id}/save`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
       
       // If the token is invalid/expired, we alert the user, clear their session, and rollback the visual toggle.
@@ -436,7 +425,8 @@ export default function Home() {
 
     // We make a GET request to fetch comments for the specific post ID. The backend should return an array of comments related to that post.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${post.id}/comments`);
+      // Deliberately plain fetch, not apiFetch: this route never sends an auth header today
+      const res = await fetch(`${API_BASE_URL}/api/posts/${post.id}/comments`);
       if (res.ok) {
         const data = await res.json();
         setComments(data);
@@ -459,12 +449,9 @@ export default function Home() {
 
     // We make a POST request to submit the new comment to the backend. The body of the request includes the comment text, and we attach the token for authentication.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/posts/${activePost.id}/comments`, {
+      const res = await apiFetch(`/api/posts/${activePost.id}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: newCommentText })
       });
 
@@ -489,13 +476,12 @@ export default function Home() {
   // Handlers for Editing and Deleting Comments
   const handleEditSubmit = async (commentId: number) => {
     if (!editCommentText.trim()) return;
-    const token = localStorage.getItem('glide_token');
-    
+
     // PUT request to update the comment text in the database. We also optimistically update the UI to reflect the new comment text immediately.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/comments/${commentId}`, {
+      const res = await apiFetch(`/api/comments/${commentId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: editCommentText })
       });
 
@@ -514,14 +500,12 @@ export default function Home() {
 
   const handleDeleteComment = async (commentId: number) => {
     if (!confirm("Are you sure you want to delete this take?")) return;
-    const token = localStorage.getItem('glide_token');
 
-    // DELETE request to remove the comment from the database. We also optimistically remove the comment from the UI and 
+    // DELETE request to remove the comment from the database. We also optimistically remove the comment from the UI and
     // decrement the comment counter on the main feed.
     try {
-      const res = await fetch(`https://glide-sports.onrender.com/api/comments/${commentId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      const res = await apiFetch(`/api/comments/${commentId}`, {
+        method: 'DELETE'
       });
 
       if (res.ok) {

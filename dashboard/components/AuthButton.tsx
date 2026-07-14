@@ -6,8 +6,9 @@ import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { SignInWithApple } from '@capacitor-community/apple-sign-in';
 import { Capacitor } from '@capacitor/core';
-import Link from 'next/link'; 
+import Link from 'next/link';
 import { useTheme } from 'next-themes';
+import { API_BASE_URL } from '@/lib/api';
 
 // AuthButton handles user authentication via Google and Apple, both for web and native platforms. 
 // It manages user state, modal visibility, and communicates with the backend server for token verification and user data retrieval.
@@ -110,7 +111,7 @@ export default function AuthButton() {
   // the returned token and user data in localStorage and updates the user state.
   const authenticateWithServer = async (token: string) => {
     try {
-      const res = await fetch('https://glide-sports.onrender.com/api/auth/google', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
@@ -149,7 +150,7 @@ export default function AuthButton() {
   // It sends the Apple identity token and optional user name to the backend server for verification.
   const authenticateAppleWithServer = async (token: string, name?: string) => {
     try {
-      const res = await fetch('https://glide-sports.onrender.com/api/auth/apple', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/apple`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, name }), 
@@ -208,7 +209,7 @@ export default function AuthButton() {
       if (isNative) {
         const { response } = await SignInWithApple.authorize({
           clientId: process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '',
-          redirectURI: 'https://glide-sports.onrender.com/api/auth/apple',
+          redirectURI: `${API_BASE_URL}/api/auth/apple`,
           scopes: 'email name',
         });
         
@@ -219,7 +220,7 @@ export default function AuthButton() {
       } else {
         // We pass the current URL origin in the "state" variable so the backend knows exactly where to send us back!
         const currentOrigin = window.location.origin;
-        const appleAuthUrl = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=https://glide-sports.onrender.com/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post&state=${encodeURIComponent(currentOrigin)}`;
+        const appleAuthUrl = `https://appleid.apple.com/auth/authorize?client_id=${process.env.NEXT_PUBLIC_APPLE_CLIENT_ID}&redirect_uri=${API_BASE_URL}/api/auth/apple&response_type=code%20id_token&scope=name%20email&response_mode=form_post&state=${encodeURIComponent(currentOrigin)}`;
         
         // Redirect the current tab entirely.
         window.location.href = appleAuthUrl;

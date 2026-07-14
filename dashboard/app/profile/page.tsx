@@ -7,6 +7,8 @@ import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
 // Import the ThemeToggle component
 import ThemeToggle from '@/components/ThemeToggle';
+// Shared API client - base URL + auto-attached auth header, see lib/api.ts
+import { apiFetch } from '@/lib/api';
 
 // The main ProfileVault component that displays the user's liked/saved posts and reels in a tabbed interface
 export default function ProfileVault() {
@@ -77,11 +79,7 @@ export default function ProfileVault() {
       setEditPicture(parsedUser.picture || "");
 
       try {
-        const res = await fetch('https://glide-sports.onrender.com/api/users/me/vault', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        const res = await apiFetch('/api/users/me/vault');
 
         if (res.ok) {
           const data = await res.json();
@@ -152,12 +150,9 @@ export default function ProfileVault() {
     const token = localStorage.getItem('glide_token');
     if (token) {
       try {
-        await fetch('https://glide-sports.onrender.com/api/users/me/profile', {
+        await apiFetch('/api/users/me/profile', {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: updatedProfile.name, picture: updatedProfile.picture })
         });
       } catch (err) {

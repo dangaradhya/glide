@@ -5,6 +5,8 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ThemeToggle from '@/components/ThemeToggle';
 import AuthButton from '@/components/AuthButton';
+// Shared API client - base URL + auto-attached auth header, see lib/api.ts
+import { apiFetch } from '@/lib/api';
 
 // Added specific destination URLs and visual gradient colors for each league
 interface League {
@@ -62,9 +64,7 @@ export default function LiveUpdatesPage() {
     setIsAuthenticated(true);
 
     // Fetch user preferences to determine which leagues they have selected
-    fetch('https://glide-sports.onrender.com/api/users/me/preferences', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
+    apiFetch('/api/users/me/preferences')
       .then(async res => {
         // Added session expiration interceptor for the initial load
         if (res.status === 401 || res.status === 403) {
@@ -106,9 +106,9 @@ export default function LiveUpdatesPage() {
 
     // Save the selected leagues to the backend and update the local state
     try {
-      const res = await fetch('https://glide-sports.onrender.com/api/users/me/preferences', {
+      const res = await apiFetch('/api/users/me/preferences', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leagues: selectedLeagues })
       });
 
