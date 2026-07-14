@@ -119,8 +119,10 @@ function ReelsContent() {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      // Generate a string of all the video IDs currently sitting in React state
-      const currentIds = reels.map(r => r.id).join(',');
+      // Generate a string of the video IDs currently sitting in React state, capped to the most
+      // recent 100 so this doesn't grow unbounded over a long scroll session (see the exclude-list
+      // NOT IN clause in server/index.js's GET /api/reels handler).
+      const currentIds = reels.slice(-100).map(r => r.id).join(',');
 
       // Forward targetReelId directly into your server endpoint layout parameters
       const urlParam = targetReelId && reels.length === 0 ? `&reelId=${targetReelId}` : '';
