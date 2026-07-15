@@ -236,6 +236,38 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
             else console.log('Reel Comments table ready.');
         });
 
+        // MATCHES TABLE (Match Center live scores - fed by server/liveScores.js ingestion)
+        // Status is always normalized to 'scheduled'/'live'/'final' at ingestion time, never a
+        // vendor's raw status text, so every consumer (routes, frontend) works off one vocabulary
+        // regardless of which vendor a given league is sourced from.
+        // score_summary is a human-readable fallback (e.g. cricket's multi-innings "241/7, 242/4")
+        // for sports whose score doesn't reduce to two integers; home_score/away_score stay NULL there.
+        db.run(`
+            CREATE TABLE IF NOT EXISTS matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                league_id TEXT NOT NULL,
+                vendor TEXT NOT NULL,
+                external_id TEXT NOT NULL,
+                home_team TEXT,
+                away_team TEXT,
+                home_score INTEGER,
+                away_score INTEGER,
+                score_summary TEXT,
+                status TEXT NOT NULL DEFAULT 'scheduled',
+                start_time DATETIME,
+                clock TEXT,
+                last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(vendor, external_id)
+            )
+        `, (err) => {
+            if (err) console.error('Error creating matches table:', err.message);
+            else console.log('Matches table ready.');
+        });
+
+        db.run(`CREATE INDEX IF NOT EXISTS idx_matches_league_status ON matches(league_id, status)`, (err) => {
+            if (err) console.error('Error creating matches league/status index:', err.message);
+        });
+
         // Create the FTS5 Virtual Table for Global Search
         db.run(`
             CREATE VIRTUAL TABLE IF NOT EXISTS global_search USING fts5(
