@@ -260,12 +260,19 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
                 UNIQUE(vendor, external_id)
             )
         `, (err) => {
-            if (err) console.error('Error creating matches table:', err.message);
-            else console.log('Matches table ready.');
-        });
+            if (err) {
+                console.error('Error creating matches table:', err.message);
+                return;
+            }
+            console.log('Matches table ready.');
 
-        db.run(`CREATE INDEX IF NOT EXISTS idx_matches_league_status ON matches(league_id, status)`, (err) => {
-            if (err) console.error('Error creating matches league/status index:', err.message);
+            // Nested inside the table's own callback (rather than a sibling db.run call) since
+            // this codebase doesn't use db.serialize() - two independent db.run calls aren't
+            // guaranteed to execute in call order, so an index created as a sibling call can
+            // fire before the table it depends on actually exists.
+            db.run(`CREATE INDEX IF NOT EXISTS idx_matches_league_status ON matches(league_id, status)`, (idxErr) => {
+                if (idxErr) console.error('Error creating matches league/status index:', idxErr.message);
+            });
         });
 
         // Create the FTS5 Virtual Table for Global Search
@@ -1220,7 +1227,52 @@ app.get('/api/reels', (req, res) => {
     });
 });
 
-// 13. THE VAULT (User Profile Data)
+// 13. MATCHES ROUTES (Match Center live scores)
+// Ingestion-facing write route: server/liveScores.js POSTs batches of normalized matches here
+// on two cadences (ESPN every minute, CricketData.org every 20 minutes - see that file).
+// Protected by the same verifyScraper bouncer as the posts/reels ingestion routes.
+// Frontend-facing GET routes (list/detail) are added separately.
+app.post('/api/matches', verifyScraper, (req, res) => {
+    const { matches } = req.body;
+    if (!Array.isArray(matches) || matches.length === 0) {
+        return res.status(400).json({ error: 'Missing or empty matches array' });
+    }
+
+    const sql = `
+        INSERT INTO matches (league_id, vendor, external_id, home_team, away_team, home_score, away_score, score_summary, status, start_time, clock, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(vendor, external_id) DO UPDATE SET
+            home_team = excluded.home_team,
+            away_team = excluded.away_team,
+            home_score = excluded.home_score,
+            away_score = excluded.away_score,
+            score_summary = excluded.score_summary,
+            status = excluded.status,
+            start_time = excluded.start_time,
+            clock = excluded.clock,
+            last_updated = CURRENT_TIMESTAMP
+    `;
+
+    let upserted = 0;
+    let failed = 0;
+    matches.forEach((m) => {
+        db.run(sql, [
+            m.league_id, m.vendor, m.external_id, m.home_team, m.away_team,
+            m.home_score, m.away_score, m.score_summary, m.status, m.start_time, m.clock,
+        ], (err) => {
+            if (err) { failed++; console.error('Error upserting match:', err.message); }
+            else upserted++;
+
+            // Fire the response once every row has been attempted (order-independent, since
+            // db.run callbacks can complete out of order under sqlite3's internal queueing).
+            if (upserted + failed === matches.length) {
+                res.status(failed > 0 ? 207 : 200).json({ upserted, failed });
+            }
+        });
+    });
+});
+
+// 14. THE VAULT (User Profile Data)
 // This route fetches everything a user has interacted with. 
 // It requires the 'authenticateToken' bouncer to ensure we know exactly who is asking.
 app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
@@ -1316,7 +1368,7 @@ app.put('/api/users/me/profile', authenticateToken, (req, res) => {
     });
 });
 
-// 14. USER PREFERENCES ROUTES (Protected by authenticateToken)
+// 15. USER PREFERENCES ROUTES (Protected by authenticateToken)
 // These routes handle reading and saving the user's custom league selections for the Live Scores dashboard.
 
 // GET: Retrieve the user's saved leagues
@@ -1431,12 +1483,13 @@ setInterval(cleanOldData, 12 * 60 * 60 * 1000);
 // Error Handling Middleware
 Sentry.setupExpressErrorHandler(app);
 
-// 15. SERVER BINDING
+// 16. SERVER BINDING
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
     
     // Wait 2 seconds AFTER the server binds to the port to ensure it is 100% ready before unleashing the scraper
     setTimeout(() => {
         require('./scraper.js');
+        require('./liveScores.js');
     }, 2000);
 });
