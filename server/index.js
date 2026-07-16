@@ -489,33 +489,129 @@ app.get('/api/health', (req, res) => {
 
 // 7. Global Search Endpoint using SQLite FTS5 MATCH
 // This route allows the frontend to perform a global search across both posts and reels using SQLite's full-text search capabilities.
+
+// --- Typo-tolerance support ---
+// FTS5's prefix match can't recover from a typo ("Lebrn*" matches nothing, since no
+// indexed word STARTS with it). When a query comes back empty, we retry it with each
+// word snapped to its closest indexed word by edit distance. The vocabulary comes from
+// the search index itself, which the 7-day retention policy keeps small (a few hundred
+// rows), and is rebuilt at most every 5 minutes.
+const SEARCH_VOCAB_TTL_MS = 5 * 60 * 1000;
+let searchVocabCache = { builtAt: 0, words: [] };
+
+function levenshtein(a, b) {
+    // Single-row dynamic programming - a and b are short single words here
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+        const curr = [i];
+        for (let j = 1; j <= b.length; j++) {
+            curr[j] = Math.min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+            );
+        }
+        prev = curr;
+    }
+    return prev[b.length];
+}
+
+function getSearchVocabulary(callback) {
+    if (Date.now() - searchVocabCache.builtAt < SEARCH_VOCAB_TTL_MS) {
+        return callback(searchVocabCache.words);
+    }
+    db.all(`SELECT title, content FROM global_search`, (err, rows) => {
+        if (err) return callback(searchVocabCache.words); // stale beats broken
+        const words = new Set();
+        for (const row of rows || []) {
+            for (const word of `${row.title || ''} ${row.content || ''}`.toLowerCase().split(/[^a-z0-9']+/)) {
+                if (word.length >= 3) words.add(word);
+            }
+        }
+        searchVocabCache = { builtAt: Date.now(), words: [...words] };
+        callback(searchVocabCache.words);
+    });
+}
+
+// Snap each query word (3+ chars) to its closest vocabulary word within edit
+// distance 2. Returns null when nothing needed correcting or nothing was close
+// enough - i.e. when a retry would just repeat the original query.
+function correctQuery(query, vocab) {
+    const queryWords = query.toLowerCase().split(/\s+/).filter(Boolean);
+    let anyCorrected = false;
+
+    const corrected = queryWords.map((word) => {
+        if (word.length < 3) return word;
+        let best = null;
+        let bestDistance = Math.min(2, Math.floor(word.length / 2));
+        for (const candidate of vocab) {
+            // Cheap length pre-filter before the O(n*m) distance
+            if (Math.abs(candidate.length - word.length) > bestDistance) continue;
+            if (candidate === word) return word; // already a real word, leave it
+            const distance = levenshtein(word, candidate);
+            if (distance <= bestDistance && distance > 0) {
+                best = candidate;
+                bestDistance = distance - 1; // only accept strictly better after this
+                if (bestDistance < 0) break;
+            }
+        }
+        if (best) anyCorrected = true;
+        return best || word;
+    });
+
+    return anyCorrected ? corrected.join(' ') : null;
+}
+
+// Optional ?type=POST|REEL scopes results to one facet ("just reels"), so a facet
+// returns a full page of its own kind instead of the client filtering a mixed list.
+// Optional ?v=2 switches the response to { results, correctedQuery } - opt-in so
+// already-open older clients (expecting a bare array) keep working across deploys.
 app.get('/api/search', (req, res) => {
     const query = req.query.q;
-    // If the search bar is empty, return an empty array
-    if (!query || query.trim() === '') return res.status(200).json([]);
+    const wantsV2 = req.query.v === '2';
+    const docType = ['POST', 'REEL'].includes(req.query.type) ? req.query.type : null;
+    const send = (rows, correctedQuery) =>
+        res.status(200).json(wantsV2 ? { results: rows, correctedQuery: correctedQuery || null } : rows);
+
+    // If the search bar is empty, return an empty result
+    if (!query || query.trim() === '') return send([]);
+
+    // Added LEFT JOIN to fetch the specific video_id for Reel routing
+    const sql = `
+        SELECT global_search.*, reels.video_id
+        FROM global_search
+        LEFT JOIN reels ON global_search.doc_type = 'REEL' AND global_search.doc_id = reels.id
+        WHERE global_search MATCH ?
+        ${docType ? `AND doc_type = ?` : ''}
+        ORDER BY rank
+        LIMIT 8
+    `;
+    const paramsFor = (matchQuery) => (docType ? [matchQuery, docType] : [matchQuery]);
 
     // We append a wildcard '*' to the user's query for "prefix matching"
     // e.g., typing "Lebr" will instantly match "Lebron"
     // We also remove double quotes to prevent SQL syntax errors in the MATCH clause
-    const safeQuery = query.replace(/"/g, '') + '*';
-
-    // Added LEFT JOIN to fetch the specific video_id for Reel routing
-    const sql = `
-        SELECT global_search.*, reels.video_id 
-        FROM global_search 
-        LEFT JOIN reels ON global_search.doc_type = 'REEL' AND global_search.doc_id = reels.id
-        WHERE global_search MATCH ? 
-        ORDER BY rank 
-        LIMIT 8
-    `;
+    const cleaned = query.replace(/"/g, '');
+    const safeQuery = cleaned + '*';
 
     // We execute the search query against the global_search virtual table. If there's an error, we log it and return a 500 status.
-    db.all(sql, [safeQuery], (err, rows) => {
+    db.all(sql, paramsFor(safeQuery), (err, rows) => {
         if (err) {
             console.error("Search error:", err.message);
             return res.status(500).json({ error: 'Search engine failure' });
         }
-        res.status(200).json(rows);
+        if (rows.length > 0 || cleaned.trim().length < 3) return send(rows);
+
+        // Zero hits: one typo-corrected retry before giving up
+        getSearchVocabulary((vocab) => {
+            const correctedQuery = correctQuery(cleaned.trim(), vocab);
+            if (!correctedQuery) return send([]);
+
+            db.all(sql, paramsFor(correctedQuery + '*'), (retryErr, retryRows) => {
+                if (retryErr || !retryRows || retryRows.length === 0) return send([]);
+                send(retryRows, correctedQuery);
+            });
+        });
     });
 });
 
