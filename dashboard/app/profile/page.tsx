@@ -150,11 +150,19 @@ export default function ProfileVault() {
     const token = localStorage.getItem('glide_token');
     if (token) {
       try {
-        await apiFetch('/api/users/me/profile', {
+        const res = await apiFetch('/api/users/me/profile', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: updatedProfile.name, picture: updatedProfile.picture })
         });
+        // A freshly-uploaded picture was sent as base64 - the server uploads it to R2 and
+        // hands back the resulting URL. Swap it into localStorage so we never permanently
+        // cache a multi-megabyte data URL client-side once the real URL is known.
+        const data = await res.json();
+        if (data.picture && data.picture !== updatedProfile.picture) {
+          const syncedProfile = { ...updatedProfile, picture: data.picture };
+          localStorage.setItem('glide_user', JSON.stringify(syncedProfile));
+        }
       } catch (err) {
         console.error("Failed to sync profile to server", err);
       }
