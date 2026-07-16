@@ -1272,6 +1272,53 @@ app.post('/api/matches', verifyScraper, (req, res) => {
     });
 });
 
+// Frontend-facing list route - no auth required yet (favorites-first personalization,
+// mirroring how Posts personalization layered optional-auth onto an already-public route,
+// is its own later task). Optional ?league_id= scopes to a single league for a single card.
+// Scores are just as freshness-critical as Reels, so the same no-cache headers apply.
+//
+// Ordering puts live matches first, then scheduled (soonest start first), then final (most
+// recent first) - the negated epoch trick lets one ORDER BY handle both sort directions
+// (ascending for "soonest", descending for "most recent") without a second query or UNION.
+app.get('/api/matches', (req, res) => {
+    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.header('Expires', '-1');
+    res.header('Pragma', 'no-cache');
+
+    const { league_id } = req.query;
+
+    let sql = `SELECT * FROM matches`;
+    const params = [];
+    if (league_id) {
+        sql += ` WHERE league_id = ?`;
+        params.push(league_id);
+    }
+
+    sql += `
+        ORDER BY
+            CASE status WHEN 'live' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END ASC,
+            CASE WHEN status = 'final'
+                THEN -CAST(strftime('%s', start_time) AS INTEGER)
+                ELSE CAST(strftime('%s', start_time) AS INTEGER)
+            END ASC
+    `;
+
+    db.all(sql, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Single-match detail route, keyed on our own internal id (not the vendor's external_id) -
+// for the future match-detail stretch view.
+app.get('/api/matches/:id', (req, res) => {
+    db.get(`SELECT * FROM matches WHERE id = ?`, [req.params.id], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return res.status(404).json({ error: 'Match not found' });
+        res.json(row);
+    });
+});
+
 // 14. THE VAULT (User Profile Data)
 // This route fetches everything a user has interacted with. 
 // It requires the 'authenticateToken' bouncer to ensure we know exactly who is asking.
@@ -1457,6 +1504,14 @@ const cleanOldData = () => {
         });
         db.run(`DELETE FROM reels WHERE ${deadReels}`, function(err) {
             if (!err && this.changes > 0) console.log(`   -> Deleted ${this.changes} old reels.`);
+        });
+
+        // Matches has no "keep if interacted with" concept the way posts/reels do, so this is
+        // a plain age cutoff on start_time. Kept short (2 days, not 7) since liveScores.js
+        // re-fetches and re-upserts current data every cycle anyway - this sweep only exists
+        // to stop the table from growing unbounded, not to be its source of truth for staleness.
+        db.run(`DELETE FROM matches WHERE start_time <= datetime('now', '-2 days')`, function(err) {
+            if (!err && this.changes > 0) console.log(`   -> Deleted ${this.changes} old matches.`);
         });
     });
     console.log("🧹 Data retention sweep completed.");
