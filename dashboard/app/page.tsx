@@ -22,10 +22,27 @@ import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+// PostHog hook (provider wraps the app in providers.tsx) for search analytics
+import { usePostHog } from '@posthog/react';
 
-// A simple one-time lock for the initial page load. 
+// A simple one-time lock for the initial page load.
 // It resets perfectly on a hard refresh, keeping your desired behavior intact!
 let initialPostSeekExecuted = false;
+
+// Session-scoped search cache: retyping a recent query renders instantly with zero
+// network. Module-level so it survives re-renders, but deliberately NOT localStorage -
+// search content changes when the hourly scraper lands, so nothing should outlive the tab.
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+const SEARCH_CACHE_MAX_ENTRIES = 50;
+const searchCache = new Map<string, { rows: any[]; correctedQuery: string | null; at: number }>();
+
+// Facet pill definitions: user-facing words, API values
+const SEARCH_FACETS = [
+  { value: 'ALL', label: 'All' },
+  { value: 'POST', label: 'News' },
+  { value: 'REEL', label: 'Reels' },
+] as const;
+type SearchFacet = typeof SEARCH_FACETS[number]['value'];
 
 export default function Home() {
   // Initialize the Next.js router
@@ -69,6 +86,12 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  // Active facet pill (All/News/Reels) - sent to the API as ?type=
+  const [searchFacet, setSearchFacet] = useState<SearchFacet>('ALL');
+  // What the backend actually searched when it rescued a typo ("Showing results for X")
+  const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
+  // PostHog client for the search_result_clicked event (may be uninitialized locally)
+  const posthog = usePostHog();
 
   // State for the Auto-Paginate & Seek Engine
   const [autoScrollTarget, setAutoScrollTarget] = useState<number | null>(null);
@@ -145,7 +168,19 @@ export default function Home() {
     // If the search query is empty or just spaces, we clear results and hide the dropdown immediately.
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setCorrectedQuery(null);
+      setSearchFacet('ALL'); // don't let a leftover pill silently pre-filter the next search
       setShowSearchDropdown(false);
+      return;
+    }
+
+    // Fresh cache hit: render instantly - no network, no debounce wait, no spinner
+    const cacheKey = `${searchFacet}:${searchQuery.trim().toLowerCase()}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < SEARCH_CACHE_TTL_MS) {
+      setSearchResults(cached.rows);
+      setCorrectedQuery(cached.correctedQuery);
+      setShowSearchDropdown(true);
       return;
     }
 
@@ -155,11 +190,25 @@ export default function Home() {
       try {
         // Deliberately plain fetch, not apiFetch: this route never sends an auth header
         // today (even when logged in), and search doesn't need one anyway
-        const res = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(searchQuery)}`);
+        const facetParam = searchFacet === 'ALL' ? '' : `&type=${searchFacet}`;
+        const res = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(searchQuery)}&v=2${facetParam}`);
         if (res.ok) {
           const data = await res.json();
-          setSearchResults(data);
+          // v=2 responds { results, correctedQuery }, but an older backend (mid-deploy
+          // skew) ignores the param and sends the bare v1 array - accept both shapes
+          const rows = Array.isArray(data) ? data : data.results;
+          const corrected = Array.isArray(data) ? null : data.correctedQuery;
+          setSearchResults(rows);
+          setCorrectedQuery(corrected);
           setShowSearchDropdown(true);
+
+          // Cache the response. Delete-before-set moves a refreshed key to the end of
+          // the Map's insertion order, so the size cap always evicts the oldest entry.
+          searchCache.delete(cacheKey);
+          if (searchCache.size >= SEARCH_CACHE_MAX_ENTRIES) {
+            searchCache.delete(searchCache.keys().next().value as string);
+          }
+          searchCache.set(cacheKey, { rows, correctedQuery: corrected, at: Date.now() });
         }
       } catch (error) {
         console.error("Search failed:", error);
@@ -169,7 +218,7 @@ export default function Home() {
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [searchQuery]);
+  }, [searchQuery, searchFacet]);
 
   // The Auto-Paginate & Seek Engine
   // This effect runs every time the 'posts' array updates. If the user searched for a post 
@@ -585,9 +634,37 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Search Results Dropdown Panel */}
-              {showSearchDropdown && searchResults.length > 0 && (
+              {/* Search Results Dropdown Panel - one panel for results, filters, and empty state,
+                  so the facet pills stay reachable even when a facet has zero hits */}
+              {showSearchDropdown && searchQuery.trim() !== '' && (
                 <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl overflow-hidden max-h-96 overflow-y-auto z-50">
+                  {/* Facet pills - sticky so they stay reachable while results scroll.
+                      onMouseDown preventDefault keeps the search input focused, otherwise its
+                      onBlur handler would close the dropdown 200ms after a pill click. */}
+                  <div className="sticky top-0 z-10 flex items-center gap-1.5 px-3 py-2 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800">
+                    {SEARCH_FACETS.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setSearchFacet(value)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold transition-all duration-200 ${
+                          searchFacet === value
+                            ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/30'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Typo rescue notice: tells the user what the backend actually searched */}
+                  {correctedQuery && searchResults.length > 0 && (
+                    <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+                      Showing results for <span className="font-semibold text-purple-600 dark:text-purple-400">{correctedQuery}</span>
+                    </div>
+                  )}
+
                   {searchResults.map((result: any, idx: number) => {
                     const isPost = result.doc_type === 'POST';
 
@@ -598,7 +675,17 @@ export default function Home() {
                       <button 
                         key={idx} 
                         onClick={(e) => {
-                          e.preventDefault(); 
+                          e.preventDefault();
+                          // First product analytics event in the app: builds the Phase 3
+                          // relevance-tuning dataset. Fire-and-forget - navigation never
+                          // depends on it, and it no-ops if PostHog is blocked/uninitialized.
+                          posthog?.capture('search_result_clicked', {
+                            query: searchQuery,
+                            corrected_query: correctedQuery,
+                            rank: idx,
+                            doc_type: result.doc_type,
+                            facet: searchFacet,
+                          });
                           setShowSearchDropdown(false);
                           
                           if (isPost) {
@@ -632,12 +719,16 @@ export default function Home() {
                       </button>
                     );
                   })}
-                </div>
-              )}
-              
-              {showSearchDropdown && searchResults.length === 0 && searchQuery.trim() && !isSearching && (
-                <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl p-4 text-center text-sm text-gray-500 z-50">
-                  No results found.
+
+                  {/* Empty state lives inside the panel so the pills above it remain
+                      clickable - a facet with zero hits still offers the way back to All */}
+                  {searchResults.length === 0 && !isSearching && (
+                    <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                      {searchFacet === 'ALL'
+                        ? 'No results found.'
+                        : `No ${searchFacet === 'POST' ? 'news' : 'reels'} for this search - try All.`}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
