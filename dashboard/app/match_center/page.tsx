@@ -11,99 +11,105 @@ import AuthButton from '@/components/AuthButton';
 // preferences routes keep using apiFetch.
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
-
-// Added specific destination URLs and visual gradient colors for each league
-interface League {
-  id: string;
-  name: string;
-  category: string;
-  url: string;
-  color: string;
-}
-
-// List of popular leagues with their official live score URLs and custom gradient colors for the dashboard cards
-const AVAILABLE_LEAGUES: League[] = [
-  { id: 'nba', name: 'NBA', category: 'Basketball', url: 'https://www.espn.com/nba/scoreboard', color: 'from-orange-400 to-red-500' },
-  { id: 'mlb', name: 'MLB', category: 'Baseball', url: 'https://www.espn.com/mlb/scoreboard', color: 'from-blue-600 to-blue-900' },
-  { id: 'nfl', name: 'NFL', category: 'American Football', url: 'https://www.espn.com/nfl/scoreboard', color: 'from-sky-500 to-indigo-600' },
-  { id: 'nhl', name: 'NHL', category: 'Hockey', url: 'https://www.espn.com/nhl/scoreboard', color: 'from-cyan-400 to-blue-600' },
-  { id: 'cricket', name: 'Intl Cricket', category: 'Cricket', url: 'https://www.espncricinfo.com/live-cricket-match-results', color: 'from-emerald-400 to-teal-600' },
-  { id: 'atp', name: "Tennis", category: 'Tennis', url: 'https://www.sofascore.com/tennis', color: 'from-lime-400 to-green-600' },
-  { id: 'ufc', name: 'UFC', category: 'MMA', url: 'https://www.espn.com/mma/schedule', color: 'from-red-600 to-red-900' },
-  { id: 'f1', name: 'Formula 1', category: 'Motorsport', url: 'https://www.formula1.com/en/racing/2026.html', color: 'from-red-500 to-rose-700' },
-  { id: 'premier_league', name: 'Premier League', category: 'Football', url: 'https://www.fotmob.com/leagues/47/overview/premier-league', color: 'from-purple-500 to-indigo-600' },
-  { id: 'serie_a', name: 'Serie A', category: 'Football', url: 'https://www.fotmob.com/leagues/55/overview/serie-a', color: 'from-blue-500 to-blue-800' },
-  { id: 'la_liga', name: 'La Liga', category: 'Football', url: 'https://www.fotmob.com/leagues/87/overview/la-liga', color: 'from-orange-400 to-red-600' },
-  { id: 'bundesliga', name: 'Bundesliga', category: 'Football', url: 'https://www.fotmob.com/leagues/54/overview/bundesliga', color: 'from-red-500 to-neutral-800' },
-  { id: 'ligue_1', name: 'Ligue 1', category: 'Football', url: 'https://www.fotmob.com/leagues/53/overview/ligue-1', color: 'from-yellow-400 to-yellow-600' },
-  { id: 'champions_league', name: 'UEFA Champions League', category: 'Football', url: 'https://www.fotmob.com/leagues/42/overview/champions-league', color: 'from-indigo-800 to-blue-900' },
-  { id: 'europa_league', name: 'UEFA Europa League', category: 'Football', url: 'https://www.fotmob.com/leagues/73/overview/europa-league', color: 'from-orange-500 to-yellow-600' },
-  { id: 'conference_league', name: 'UEFA Conference League', category: 'Football', url: 'https://www.fotmob.com/leagues/10216/overview/uefa-conference-league', color: 'from-green-500 to-teal-700' },
-  { id: 'world_cup', name: 'FIFA World Cup', category: 'Intl Football', url: 'https://www.fotmob.com/leagues/77/overview/world-cup', color: 'from-amber-600 to-red-700' },
-  { id: 'euros', name: 'Euros', category: 'Intl Football', url: 'https://www.fotmob.com/leagues/50/overview/euro', color: 'from-blue-600 to-indigo-800' },
-  { id: 'copa_america', name: 'Copa America', category: 'Intl Football', url: 'https://www.fotmob.com/leagues/130/overview/copa-america', color: 'from-sky-400 to-blue-700' },
-  { id: 'nations_league', name: 'UEFA Nations League', category: 'Intl Football', url: 'https://www.fotmob.com/leagues/9806/overview/uefa-nations-league', color: 'from-slate-600 to-slate-900' },
-];
-
-// Shape of a row from GET /api/matches (see server/index.js). status is always
-// normalized to scheduled/live/final at ingestion time. Sports whose score doesn't
-// reduce to two integers (tennis sets, cricket innings) carry a human-readable
-// score_summary instead, with home_score/away_score left null.
-interface Match {
-  id: number;
-  league_id: string;
-  home_team: string | null;
-  away_team: string | null;
-  home_score: number | null;
-  away_score: number | null;
-  score_summary: string | null;
-  status: string;
-  start_time: string;
-  clock: string | null;
-  last_updated: string;
-}
+import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel } from '@/lib/leagues';
 
 // How stale a league's freshest row can be before the scoreboard card gives way to
-// the outbound-link card. ESPN leagues are polled every minute, so 30 minutes means
-// a genuinely dead feed, not a hiccup; cricket is on a 20-minute cadence (free-tier
-// quota), so it gets a proportionally longer leash. This staleness fallback is also
-// the safety net if the unofficial ESPN endpoint ever blocks us outright.
-const DEFAULT_STALENESS_MS = 30 * 60 * 1000;
+// the outbound-link card. Future fixtures are only re-upserted by the HOURLY sweep
+// (today's matches also get the every-minute live cycle), so the threshold must
+// comfortably exceed an hour or fixture-only leagues would flap to outbound cards
+// between sweeps. 2.5h = two missed sweeps plus margin. This staleness fallback is
+// also the safety net if the unofficial ESPN endpoint ever blocks us outright.
+const DEFAULT_STALENESS_MS = 150 * 60 * 1000;
 const STALENESS_MS_BY_LEAGUE: Record<string, number> = {
-  cricket: 90 * 60 * 1000,
+  cricket: 90 * 60 * 1000, // 20-minute polling cadence, so a much shorter leash than hourly-swept fixtures
 };
 
 const POLL_INTERVAL_MS = 60 * 1000; // matches the backend's own ESPN polling cadence
-const COLLAPSED_MATCH_COUNT = 3;
-const EXPANDED_MATCH_COUNT = 12;
+const COLLAPSED_ROWS_PER_DAY = 4;
 
-// SQLite's CURRENT_TIMESTAMP writes UTC but without a timezone marker
-// ("2026-07-16 00:34:03"), which new Date() would misread as local time.
-// start_time is already ISO-with-Z and passes through untouched.
-function parseUtc(value: string): Date {
-  return new Date(value.includes('T') ? value : value.replace(' ', 'T') + 'Z');
+// One calendar day's worth of a league's matches, in the viewer's timezone.
+interface DayGroup {
+  key: string;
+  date: Date;
+  label: string;
+  matches: Match[];
 }
 
-// Kickoff labels in the viewer's own timezone: bare time for today,
-// "Tomorrow"/weekday prefix otherwise.
-function formatStartTime(startTime: string): string {
+// Group a league's matches into calendar-day sections (viewer-local), chronologically
+// ascending - results read downward into today and then upcoming fixtures, the way a
+// league schedule page reads. Within a day, live matches float to the top.
+function groupByDay(matches: Match[]): DayGroup[] {
+  const byKey = new Map<string, DayGroup>();
+  for (const match of matches) {
+    const date = parseUtc(match.start_time);
+    if (isNaN(date.getTime())) continue;
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const group = byKey.get(key);
+    if (group) group.matches.push(match);
+    else byKey.set(key, { key, date, label: dayLabel(date), matches: [match] });
+  }
+
+  const groups = [...byKey.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+  for (const group of groups) {
+    group.matches.sort((a, b) => {
+      const liveDelta = (a.status === 'live' ? 0 : 1) - (b.status === 'live' ? 0 : 1);
+      if (liveDelta !== 0) return liveDelta;
+      return parseUtc(a.start_time).getTime() - parseUtc(b.start_time).getTime();
+    });
+  }
+  return groups;
+}
+
+// The card's collapsed view answers "what just happened, what's happening, what's
+// next" without scrolling: the most recent day with a completed match, today, and
+// the nearest upcoming day - everything else appears on expand.
+function defaultVisibleDayKeys(groups: DayGroup[]): Set<string> {
+  const keys = new Set<string>();
+  const todayKey = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+  })();
+
+  for (const group of groups) {
+    if (group.key === todayKey || group.matches.some(m => m.status === 'live')) keys.add(group.key);
+  }
+  const lastFinished = [...groups].reverse().find(g => g.matches.some(m => m.status === 'final'));
+  if (lastFinished) keys.add(lastFinished.key);
+  const nextUpcoming = groups.find(g => g.date.getTime() > Date.now() && g.key !== todayKey && g.matches.some(m => m.status === 'scheduled'));
+  if (nextUpcoming) keys.add(nextUpcoming.key);
+
+  if (keys.size === 0 && groups.length > 0) keys.add(groups[0].key);
+  return keys;
+}
+
+function formatKickoffTime(startTime: string): string {
   const start = parseUtc(startTime);
   if (isNaN(start.getTime())) return '';
-
-  const time = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  const now = new Date();
-  if (start.toDateString() === now.toDateString()) return time;
-
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-  if (start.toDateString() === tomorrow.toDateString()) return `Tomorrow ${time}`;
-
-  return `${start.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  return start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-// One match inside a league scoreboard card. Three visual states:
-// live (pulsing dot + clock), scheduled (kickoff time), final ("Final",
-// winner's line at full strength, loser dimmed).
+// A team's logo, ESPN CDN URL. Hides itself on load failure rather than showing a
+// broken-image glyph; tennis/cricket rows have no logo at all and get a spacer so
+// team names still align vertically.
+function TeamLogo({ src, alt }: { src: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) return <span className="w-5 h-5 shrink-0" aria-hidden="true" />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className="w-5 h-5 shrink-0 object-contain"
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+// One match row inside a league card. Three visual states: live (pulsing dot +
+// clock), scheduled (kickoff time - the date lives in the day-section header),
+// final ("Final", winner's line at full strength, loser dimmed). The whole row
+// links to the match detail view.
 function MatchRow({ match }: { match: Match }) {
   const isLive = match.status === 'live';
   const isFinal = match.status === 'final';
@@ -118,7 +124,10 @@ function MatchRow({ match }: { match: Match }) {
     isFinal && hasScores && !won ? 'opacity-50' : '';
 
   return (
-    <div className="px-4 py-3">
+    <Link
+      href={`/match_center/match?id=${match.id}`}
+      className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+    >
       <div className="flex items-center gap-1.5 mb-1.5">
         {isLive ? (
           <>
@@ -132,15 +141,18 @@ function MatchRow({ match }: { match: Match }) {
           </>
         ) : (
           <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {isFinal ? 'Final' : formatStartTime(match.start_time)}
+            {isFinal ? 'Final' : formatKickoffTime(match.start_time)}
           </span>
         )}
       </div>
 
       <div className="space-y-1">
-        <div className={`flex items-baseline justify-between gap-3 ${dimmedIfLost(homeWon)}`}>
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate min-w-0">
-            {match.home_team}
+        <div className={`flex items-center justify-between gap-3 ${dimmedIfLost(homeWon)}`}>
+          <span className="flex items-center gap-2 min-w-0">
+            <TeamLogo src={match.home_logo} alt="" />
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+              {match.home_team}
+            </span>
           </span>
           {hasScores && (
             <span className="text-base font-bold tabular-nums text-gray-900 dark:text-white shrink-0">
@@ -148,9 +160,12 @@ function MatchRow({ match }: { match: Match }) {
             </span>
           )}
         </div>
-        <div className={`flex items-baseline justify-between gap-3 ${dimmedIfLost(awayWon)}`}>
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate min-w-0">
-            {match.away_team}
+        <div className={`flex items-center justify-between gap-3 ${dimmedIfLost(awayWon)}`}>
+          <span className="flex items-center gap-2 min-w-0">
+            <TeamLogo src={match.away_logo} alt="" />
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+              {match.away_team}
+            </span>
           </span>
           {hasScores && (
             <span className="text-base font-bold tabular-nums text-gray-900 dark:text-white shrink-0">
@@ -164,16 +179,16 @@ function MatchRow({ match }: { match: Match }) {
           Suppressed for scheduled rows for the same reason as the score column:
           ESPN pre-fills "0 - 0" before kickoff. */}
       {!hasScores && match.status !== 'scheduled' && match.score_summary && (
-        <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400 mt-1.5 truncate">
+        <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400 mt-1.5 truncate pl-7">
           {match.score_summary}
         </p>
       )}
-    </div>
+    </Link>
   );
 }
 
 // A league with fresh data: gradient identity band up top (doubling as the outbound
-// "full coverage" link), real scores below.
+// "full coverage" link), day-sectioned scores below.
 function LeagueScoreboardCard({
   league,
   matches,
@@ -185,8 +200,17 @@ function LeagueScoreboardCard({
   expanded: boolean;
   onToggleExpanded: () => void;
 }) {
-  const visible = matches.slice(0, expanded ? EXPANDED_MATCH_COUNT : COLLAPSED_MATCH_COUNT);
-  const hiddenCount = Math.min(matches.length, EXPANDED_MATCH_COUNT) - COLLAPSED_MATCH_COUNT;
+  const groups = useMemo(() => groupByDay(matches), [matches]);
+  const visibleKeys = useMemo(() => defaultVisibleDayKeys(groups), [groups]);
+
+  const liveCount = matches.filter(m => m.status === 'live').length;
+  const visibleGroups = expanded ? groups : groups.filter(g => visibleKeys.has(g.key));
+  // Live rows are never hidden by the per-day collapse cap - they sort first within
+  // their day, so the slice can only ever drop scheduled/final rows.
+  const rowsFor = (group: DayGroup) =>
+    expanded ? group.matches : group.matches.slice(0, COLLAPSED_ROWS_PER_DAY);
+
+  const hiddenCount = matches.length - visibleGroups.reduce((n, g) => n + rowsFor(g).length, 0);
 
   return (
     <div className="flex flex-col self-start rounded-xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -206,24 +230,41 @@ function LeagueScoreboardCard({
               {league.name}
             </h3>
           </div>
-          <span className="shrink-0 text-[11px] font-medium text-white/90 bg-black/20 px-2.5 py-1 rounded-full backdrop-blur-sm group-hover:bg-black/30 transition-colors">
-            Full coverage ↗
-          </span>
+          <div className="shrink-0 flex items-center gap-2">
+            {liveCount > 0 && (
+              <span className="text-[11px] font-bold text-white bg-red-600/90 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                <span className="inline-flex rounded-full h-1.5 w-1.5 bg-white animate-pulse motion-reduce:animate-none" aria-hidden="true"></span>
+                {liveCount} Live
+              </span>
+            )}
+            <span className="text-[11px] font-medium text-white/90 bg-black/20 px-2.5 py-1 rounded-full backdrop-blur-sm group-hover:bg-black/30 transition-colors">
+              Full coverage ↗
+            </span>
+          </div>
         </div>
       </a>
 
-      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {visible.map(match => (
-          <MatchRow key={match.id} match={match} />
-        ))}
-      </div>
+      {visibleGroups.map(group => (
+        <div key={group.key}>
+          <div className="px-4 py-1.5 bg-gray-50 dark:bg-gray-950/60 border-y border-gray-100 dark:border-gray-800 first:border-t-0">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+              {group.label}
+            </span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {rowsFor(group).map(match => (
+              <MatchRow key={match.id} match={match} />
+            ))}
+          </div>
+        </div>
+      ))}
 
-      {matches.length > COLLAPSED_MATCH_COUNT && (
+      {(hiddenCount > 0 || expanded) && (
         <button
           onClick={onToggleExpanded}
           className="w-full px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 transition-colors"
         >
-          {expanded ? 'Show fewer' : `Show ${hiddenCount} more`}
+          {expanded ? 'Show fewer' : `Show all ${matches.length} matches`}
         </button>
       )}
     </div>
@@ -267,8 +308,9 @@ function OutboundLeagueCard({ league }: { league: League }) {
 }
 
 // The main Match Center component: users pick leagues to follow, and each becomes an
-// in-app live scoreboard (with the official coverage link kept as a secondary
-// affordance in the card header).
+// in-app live scoreboard - last matchday, live/today, and next matchday by default,
+// the full fetched window on expand - with the official coverage link kept as a
+// secondary affordance in the card header.
 export default function LiveUpdatesPage() {
   // 1. STATE MANAGEMENT
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -419,10 +461,9 @@ export default function LiveUpdatesPage() {
     .map(id => AVAILABLE_LEAGUES.find(l => l.id === id))
     .filter(Boolean) as League[];
 
-  // Group match rows by league, preserving the server's ordering (live first, then
-  // scheduled soonest-first, then final most-recent-first). Rows without both team
-  // names (ESPN emits these for TBD/doubles tennis slots) can't be rendered and are
-  // dropped here rather than special-cased everywhere below.
+  // Group match rows by league. Rows without both team names (ESPN emits these for
+  // TBD/doubles tennis slots) can't be rendered and are dropped here rather than
+  // special-cased everywhere below.
   const matchesByLeague = useMemo(() => {
     const grouped = new Map<string, Match[]>();
     for (const match of matches) {
@@ -458,8 +499,10 @@ export default function LiveUpdatesPage() {
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
 
       {/* Bottom padding clears the mobile bottom nav bar. Grows by the safe-area inset (same
-          var used on the nav bar below) for the same reason the nav bar itself does */}
-      <div className="max-w-4xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
+          var used on the nav bar below) for the same reason the nav bar itself does.
+          Wider than the rest of the app (6xl, not 4xl) so three scoreboard columns
+          get real room on desktop. */}
+      <div className="max-w-6xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
 
         {/* Header Section */}
         <div className="flex items-center justify-between mb-4">
