@@ -26,32 +26,17 @@ const PORT = process.env.PORT || 3000;
 const MATCHES_API_URL = `http://127.0.0.1:${PORT}/api/matches`;
 const CRICKET_DATA_API_KEY = process.env.CRICKET_DATA_API_KEY;
 
-// Every league ESPN covers for us. Tennis has two tours (ATP/WTA) mapped onto the SAME
-// 'atp' league_id, since Match Center only has one generic "Tennis" card today, not separate
-// ATP/WTA cards - both tours' matches show up on that one card.
-// All slugs below were verified live against the real endpoint (each returns the correctly
-// named league object, e.g. 'ita.1' -> "Italian Serie A") - not guessed, since a wrong slug
-// silently returns either an empty or wrong-league response rather than an error.
-const ESPN_LEAGUES = [
-    { league_id: 'premier_league', sport: 'soccer', slug: 'eng.1' },
-    { league_id: 'serie_a', sport: 'soccer', slug: 'ita.1' },
-    { league_id: 'la_liga', sport: 'soccer', slug: 'esp.1' },
-    { league_id: 'bundesliga', sport: 'soccer', slug: 'ger.1' },
-    { league_id: 'ligue_1', sport: 'soccer', slug: 'fra.1' },
-    { league_id: 'champions_league', sport: 'soccer', slug: 'uefa.champions' },
-    { league_id: 'europa_league', sport: 'soccer', slug: 'uefa.europa' },
-    { league_id: 'conference_league', sport: 'soccer', slug: 'uefa.europa.conf' },
-    { league_id: 'world_cup', sport: 'soccer', slug: 'fifa.world' },
-    { league_id: 'euros', sport: 'soccer', slug: 'uefa.euro' },
-    { league_id: 'copa_america', sport: 'soccer', slug: 'conmebol.america' },
-    { league_id: 'nations_league', sport: 'soccer', slug: 'uefa.nations' },
-    { league_id: 'nba', sport: 'basketball', slug: 'nba' },
-    { league_id: 'mlb', sport: 'baseball', slug: 'mlb' },
-    { league_id: 'nfl', sport: 'football', slug: 'nfl' },
-    { league_id: 'nhl', sport: 'hockey', slug: 'nhl' },
-    { league_id: 'atp', sport: 'tennis', slug: 'atp' },
-    { league_id: 'atp', sport: 'tennis', slug: 'wta' },
-];
+// The league_id -> ESPN (sport, slug) map lives in espnLeagues.js so the box-score
+// summary route in index.js can share it without require()ing this file's cron
+// side effects. See that file for the tennis-two-tours and verified-slugs notes.
+const { ESPN_LEAGUES } = require('./espnLeagues');
+
+// The fixtures sweep window: how far back and forward the hourly date-range fetch
+// reaches. Backward covers "last matchday" on the frontend (and must stay under
+// index.js's 10-day matches retention cutoff); forward covers "next matchday" even
+// for leagues between seasons, whose next fixture can be weeks out.
+const FIXTURES_DAYS_BACK = 7;
+const FIXTURES_DAYS_AHEAD = 21;
 
 // ESPN's status.type.state is a clean 3-value model across every sport it covers - much
 // simpler than chasing per-sport in-progress codes the way API-Sports required.
@@ -76,6 +61,8 @@ function normalizeEspnEvent(event, league_id) {
         external_id: event.id,
         home_team: home ? home.team.displayName : null,
         away_team: away ? away.team.displayName : null,
+        home_logo: home?.team?.logo || null,
+        away_logo: away?.team?.logo || null,
         home_score: Number.isNaN(homeScore) ? null : homeScore,
         away_score: Number.isNaN(awayScore) ? null : awayScore,
         score_summary: `${Number.isNaN(homeScore) ? '?' : homeScore} - ${Number.isNaN(awayScore) ? '?' : awayScore}`,
@@ -112,6 +99,9 @@ function normalizeEspnTennisMatch(match, league_id) {
         external_id: match.id,
         home_team: competitorName(home),
         away_team: competitorName(away),
+        // Tennis competitors are athletes, not teams - there's no logo to carry
+        home_logo: null,
+        away_logo: null,
         home_score: null,
         away_score: null,
         score_summary: setScores.length > 0 ? setScores.join(', ') : null,
@@ -121,8 +111,11 @@ function normalizeEspnTennisMatch(match, league_id) {
     };
 }
 
-async function fetchEspnLeague({ league_id, sport, slug }) {
-    const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${slug}/scoreboard`;
+// dateRange (optional, "YYYYMMDD-YYYYMMDD") widens the fetch from "today's scoreboard"
+// to a whole window - used by the hourly fixtures sweep. Omitted for the every-minute
+// live cycle, where today's default response is exactly what's wanted.
+async function fetchEspnLeague({ league_id, sport, slug }, dateRange) {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${slug}/scoreboard${dateRange ? `?dates=${dateRange}` : ''}`;
     const res = await fetch(url);
     const json = await res.json();
     const events = json.events || [];
@@ -216,6 +209,32 @@ async function runEspnCycle() {
     console.log('🏁 ESPN live scores cycle complete!');
 }
 
+// Hourly fixtures sweep: pulls the past-week results + upcoming-fixtures window for
+// every TEAM-sport league, so the frontend can show "last matchday" and "next
+// matchday" instead of only whatever happens to be on today's scoreboard. Tennis is
+// deliberately excluded: it has no matchday concept, runs hundreds of matches per
+// day (a multi-week window would dwarf every other league combined), and its
+// today-only data already comes from the every-minute cycle above.
+async function runEspnFixturesCycle() {
+    console.log('📅 Starting ESPN fixtures sweep...');
+    const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const from = new Date(Date.now() - FIXTURES_DAYS_BACK * 24 * 60 * 60 * 1000);
+    const to = new Date(Date.now() + FIXTURES_DAYS_AHEAD * 24 * 60 * 60 * 1000);
+    const dateRange = `${fmt(from)}-${fmt(to)}`;
+
+    const allMatches = [];
+    for (const league of ESPN_LEAGUES) {
+        if (league.sport === 'tennis') continue;
+        try {
+            allMatches.push(...(await fetchEspnLeague(league, dateRange)));
+        } catch (err) {
+            console.error(`   ⚠️ Failed fixtures fetch ESPN ${league.sport}/${league.slug}:`, err.message);
+        }
+    }
+    await postMatchesBatch(allMatches, 'ESPN fixtures');
+    console.log('🏁 ESPN fixtures sweep complete!');
+}
+
 async function runCricketCycle() {
     console.log('🏏 Starting cricket live scores cycle...');
     try {
@@ -227,10 +246,14 @@ async function runCricketCycle() {
     console.log('🏁 Cricket live scores cycle complete!');
 }
 
-// Run both once immediately on startup, then on their own cadences: ESPN every minute (no
-// visible quota, but still a good-citizen interval against an undocumented endpoint), cricket
-// every 20 minutes (CricketData.org's free tier has a hard 100 requests/day cap).
+// Run everything once immediately on startup, then on their own cadences: ESPN's live
+// cycle every minute (no visible quota, but still a good-citizen interval against an
+// undocumented endpoint), the fixtures sweep hourly at :07 (offset so it never lands on
+// the same tick as a live cycle - fixtures barely change hour to hour), cricket every
+// 20 minutes (CricketData.org's free tier has a hard 100 requests/day cap).
 runEspnCycle();
+runEspnFixturesCycle();
 runCricketCycle();
 cron.schedule('* * * * *', runEspnCycle);
+cron.schedule('7 * * * *', runEspnFixturesCycle);
 cron.schedule('*/20 * * * *', runCricketCycle);
