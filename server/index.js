@@ -18,6 +18,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const appleSignin = require('apple-signin-auth');
+const { ESPN_LEAGUES } = require('./espnLeagues'); // league_id -> ESPN (sport, slug), for the box-score summary route
 
 // 2. INITIALIZATION
 // This creates our application instance. Think of this like initializing your Axum router in Rust.
@@ -273,6 +274,18 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
             db.run(`CREATE INDEX IF NOT EXISTS idx_matches_league_status ON matches(league_id, status)`, (idxErr) => {
                 if (idxErr) console.error('Error creating matches league/status index:', idxErr.message);
             });
+
+            // Team logo URLs (from ESPN's own CDN), added after the table first shipped.
+            // SQLite has no ADD COLUMN IF NOT EXISTS, so the "duplicate column name" error
+            // on every boot after the first is expected and swallowed - any OTHER error is
+            // still surfaced. Additive-only, per the schema-change PR checklist.
+            for (const col of ['home_logo', 'away_logo']) {
+                db.run(`ALTER TABLE matches ADD COLUMN ${col} TEXT`, (alterErr) => {
+                    if (alterErr && !alterErr.message.includes('duplicate column name')) {
+                        console.error(`Error adding matches.${col}:`, alterErr.message);
+                    }
+                });
+            }
         });
 
         // Create the FTS5 Virtual Table for Global Search
@@ -1239,11 +1252,13 @@ app.post('/api/matches', verifyScraper, (req, res) => {
     }
 
     const sql = `
-        INSERT INTO matches (league_id, vendor, external_id, home_team, away_team, home_score, away_score, score_summary, status, start_time, clock, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO matches (league_id, vendor, external_id, home_team, away_team, home_logo, away_logo, home_score, away_score, score_summary, status, start_time, clock, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(vendor, external_id) DO UPDATE SET
             home_team = excluded.home_team,
             away_team = excluded.away_team,
+            home_logo = excluded.home_logo,
+            away_logo = excluded.away_logo,
             home_score = excluded.home_score,
             away_score = excluded.away_score,
             score_summary = excluded.score_summary,
@@ -1258,6 +1273,7 @@ app.post('/api/matches', verifyScraper, (req, res) => {
     matches.forEach((m) => {
         db.run(sql, [
             m.league_id, m.vendor, m.external_id, m.home_team, m.away_team,
+            m.home_logo ?? null, m.away_logo ?? null,
             m.home_score, m.away_score, m.score_summary, m.status, m.start_time, m.clock,
         ], (err) => {
             if (err) { failed++; console.error('Error upserting match:', err.message); }
@@ -1287,14 +1303,32 @@ app.get('/api/matches', (req, res) => {
 
     const { league_id } = req.query;
 
-    let sql = `SELECT * FROM matches`;
-    const params = [];
-    if (league_id) {
-        sql += ` WHERE league_id = ?`;
-        params.push(league_id);
-    }
+    // Two payload guards, both added when the hourly fixtures sweep started widening
+    // what's in the table (a month of MLB alone is ~400 rows):
+    // - a hard window on start_time (mirrors the ingestion sweep's own reach, and keeps
+    //   null-start_time rows - a rare cricket case - rather than silently dropping them);
+    // - a per-league relevance cap via ROW_NUMBER: live matches always survive, then
+    //   whatever is nearest in time to right now, forward or back. This is what keeps
+    //   tennis's ~500 rows/day from drowning the response while every league's card
+    //   still gets its last + next matchday.
+    const inner = `
+        SELECT *, ROW_NUMBER() OVER (
+            PARTITION BY league_id
+            ORDER BY
+                CASE status WHEN 'live' THEN 0 ELSE 1 END ASC,
+                COALESCE(ABS(strftime('%s', start_time) - strftime('%s', 'now')), 1e15) ASC
+        ) AS relevance_rank
+        FROM matches
+        WHERE (start_time IS NULL OR start_time >= datetime('now', '-8 days'))
+        ${league_id ? 'AND league_id = ?' : ''}
+    `;
+    const params = league_id ? [league_id] : [];
 
-    sql += `
+    const sql = `
+        SELECT id, league_id, vendor, external_id, home_team, away_team, home_logo, away_logo,
+               home_score, away_score, score_summary, status, start_time, clock, last_updated
+        FROM (${inner})
+        WHERE relevance_rank <= 60
         ORDER BY
             CASE status WHEN 'live' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END ASC,
             CASE WHEN status = 'final'
@@ -1316,6 +1350,90 @@ app.get('/api/matches/:id', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!row) return res.status(404).json({ error: 'Match not found' });
         res.json(row);
+    });
+});
+
+// Box-score detail for the match-detail view: proxies ESPN's per-event summary endpoint
+// (linescores by period/inning + team stat comparisons) live rather than ingesting box
+// scores into SQLite - detail data is only interesting while someone is actually looking
+// at it. A 60-second in-memory cache (hits AND misses) means a detail page polling every
+// 30s, or many users on the same big game, still costs ESPN at most one request a minute
+// per match. Non-ESPN matches (cricket) and sports whose summary shape doesn't fit
+// (tennis) return 404 and the frontend renders its hero-only fallback.
+const matchSummaryCache = new Map(); // match id -> { expiresAt, status, body }
+const SUMMARY_CACHE_MS = 60 * 1000;
+
+app.get('/api/matches/:id/summary', (req, res) => {
+    const cached = matchSummaryCache.get(req.params.id);
+    if (cached && cached.expiresAt > Date.now()) {
+        return res.status(cached.status).json(cached.body);
+    }
+
+    const respond = (status, body) => {
+        matchSummaryCache.set(req.params.id, { expiresAt: Date.now() + SUMMARY_CACHE_MS, status, body });
+        // Drop expired entries opportunistically so the cache can't grow unbounded
+        for (const [key, entry] of matchSummaryCache) {
+            if (entry.expiresAt <= Date.now()) matchSummaryCache.delete(key);
+        }
+        res.status(status).json(body);
+    };
+
+    db.get(`SELECT * FROM matches WHERE id = ?`, [req.params.id], async (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return respond(404, { error: 'Match not found' });
+        if (row.vendor !== 'espn') return respond(404, { error: 'No box score available for this match' });
+
+        const league = ESPN_LEAGUES.find((l) => l.league_id === row.league_id);
+        if (!league || league.sport === 'tennis') {
+            return respond(404, { error: 'No box score available for this match' });
+        }
+
+        try {
+            const url = `https://site.api.espn.com/apis/site/v2/sports/${league.sport}/${league.slug}/summary?event=${encodeURIComponent(row.external_id)}`;
+            const espnRes = await fetch(url);
+            if (!espnRes.ok) return respond(404, { error: 'No box score available for this match' });
+            const summary = await espnRes.json();
+
+            const competitors = summary.header?.competitions?.[0]?.competitors || [];
+            const home = competitors.find((c) => c.homeAway === 'home');
+            const away = competitors.find((c) => c.homeAway === 'away');
+            if (!home || !away) return respond(404, { error: 'No box score available for this match' });
+
+            const side = (c) => ({
+                linescores: (c.linescores || []).map((p) => p.displayValue ?? String(p.value ?? '')),
+                record: c.record?.[0]?.summary || null,
+            });
+
+            // Pair the two teams' stat lists by stat name (ESPN emits them per-team).
+            // Matched to home/away via team id, never array order - boxscore.teams order
+            // varies by sport.
+            const boxTeams = summary.boxscore?.teams || [];
+            const homeBox = boxTeams.find((t) => t.team?.id === home.team?.id);
+            const awayBox = boxTeams.find((t) => t.team?.id === away.team?.id);
+            // Some sports (baseball) group team stats a level deeper with no top-level
+            // displayValue - a pair only counts when both sides have a real value to show,
+            // otherwise JSON.stringify silently drops the undefined and breaks consumers.
+            const stats = (homeBox?.statistics || [])
+                .map((stat) => {
+                    const awayStat = (awayBox?.statistics || []).find((s) => s.name === stat.name);
+                    return awayStat && stat.displayValue != null && awayStat.displayValue != null
+                        ? { label: stat.label || stat.name, home: stat.displayValue, away: awayStat.displayValue }
+                        : null;
+                })
+                .filter(Boolean)
+                .slice(0, 12);
+
+            respond(200, {
+                home: side(home),
+                away: side(away),
+                stats,
+                venue: summary.gameInfo?.venue?.fullName || null,
+                attendance: summary.gameInfo?.attendance || null,
+            });
+        } catch (fetchErr) {
+            console.error('Error fetching ESPN summary:', fetchErr.message);
+            respond(404, { error: 'No box score available for this match' });
+        }
     });
 });
 
@@ -1507,10 +1625,11 @@ const cleanOldData = () => {
         });
 
         // Matches has no "keep if interacted with" concept the way posts/reels do, so this is
-        // a plain age cutoff on start_time. Kept short (2 days, not 7) since liveScores.js
-        // re-fetches and re-upserts current data every cycle anyway - this sweep only exists
-        // to stop the table from growing unbounded, not to be its source of truth for staleness.
-        db.run(`DELETE FROM matches WHERE start_time <= datetime('now', '-2 days')`, function(err) {
+        // a plain age cutoff on start_time. 10 days: comfortably past the fixtures sweep's
+        // 7-day backward reach (liveScores.js), so "last matchday" results survive between
+        // sweeps - this sweep only exists to stop the table from growing unbounded, not to
+        // be its source of truth for staleness.
+        db.run(`DELETE FROM matches WHERE start_time <= datetime('now', '-10 days')`, function(err) {
             if (!err && this.changes > 0) console.log(`   -> Deleted ${this.changes} old matches.`);
         });
     });
