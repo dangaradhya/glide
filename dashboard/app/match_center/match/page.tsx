@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ThemeToggle from '@/components/ThemeToggle';
 import Brand from '@/components/Brand';
+import TopTabs from '@/components/TopTabs';
 import AuthButton from '@/components/AuthButton';
 import BottomNav from '@/components/BottomNav';
 import { API_BASE_URL } from '@/lib/api';
@@ -316,17 +317,9 @@ export default function MatchDetailPage() {
           </div>
         </div>
 
-        <div className="hidden md:flex justify-center space-x-8 mb-8">
-          <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Posts
-          </Link>
-          <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Reels
-          </Link>
-          <Link href="/match_center" className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1">
-            Match Center
-          </Link>
-        </div>
+        {/* The "← Match Center" back link inside the content covers navigation up;
+            the tab row just shows where you are, same as the dashboard page */}
+        <TopTabs active="match_center" className="mb-8" />
 
         <Suspense
           fallback={

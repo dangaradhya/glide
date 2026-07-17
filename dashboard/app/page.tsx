@@ -23,6 +23,8 @@ import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import Brand from '@/components/Brand';
+import TopTabs from '@/components/TopTabs';
+import LiveRail from '@/components/LiveRail';
 // PostHog hook (provider wraps the app in providers.tsx) for search analytics
 import { usePostHog } from '@posthog/react';
 
@@ -599,7 +601,7 @@ export default function Home() {
       {/* Bottom padding clears the mobile bottom nav so the last card isn't hidden behind it.
           Grows by the safe-area inset (same var used on the nav bar below) since the nav's
           real on-screen height grows by that amount on notched/gesture-bar devices */}
-      <div className="max-w-3xl mx-auto relative z-10 pb-[calc(5rem_+_var(--app-safe-bottom))] md:pb-0">
+      <div className="max-w-3xl lg:max-w-6xl mx-auto relative z-10 pb-[calc(5rem_+_var(--app-safe-bottom))] md:pb-0">
         
       {/* Responsive Header Container */}
         {/* We use flex-col on the main wrapper, splitting the header into 2 distinct rows so nothing crashes on mobile */}
@@ -741,22 +743,14 @@ export default function Home() {
           </div>
 
           {/* Row 2: Navigation Section - Perfectly centered */}
-          {/* Added hidden md:flex to hide this row entirely on mobile screens */}
-          <div className="hidden md:flex justify-center gap-6 md:gap-8">
-            <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1 cursor-default">
-              Posts
-            </span>
-            <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-              Reels
-            </Link>
-            <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-              Match Center
-            </Link>
-          </div>
+          <TopTabs active="posts" />
         </div>
 
-        {/* Removed the grid-cols layout entirely. The feed now beautifully centers itself. */}
-        <div className="w-full">
+        {/* Desktop (lg+) is feed + Live-now rail; the rail renders nothing when there's
+            no live/upcoming data or the fetch fails, and the feed's auto margins then
+            re-center it - mobile/tablet stay a single centered column either way */}
+        <div className="w-full lg:flex lg:gap-8 lg:items-start">
+        <div className="flex-1 min-w-0 lg:max-w-3xl lg:mx-auto">
           
           {/* 8. CONDITIONAL RENDERING */}
           {/* `loading` alone is sufficient here: it only ever flips true -> false once,
@@ -780,9 +774,9 @@ export default function Home() {
                   <button
                     key={category}
                     onClick={() => setActiveCategory(category)}
-                    className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all duration-200 ${
+                    className={`px-4 py-1.5 rounded-full font-display font-stretch-[72%] font-semibold uppercase tracking-[0.07em] text-[13px] whitespace-nowrap transition-all duration-200 ${
                       activeCategory === category
-                        ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30 border border-purple-500'
+                        ? 'bg-court text-white shadow-md shadow-purple-500/30 border border-court'
                         : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-800'
                     }`}
                   >
@@ -798,16 +792,16 @@ export default function Home() {
                   <div 
                     key={post.id} 
                     id={`post-${post.id}`} // Ensure the ID is attached to the card for the scroll engine to find
-                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 md:p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden"
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 md:p-6 shadow-md dark:shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-colors group overflow-hidden"
                   >
                     
                     {/* Top Row: Category Badge and Timestamp */}
                     <div className="flex justify-between items-center mb-4">
-                      <span className="bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold px-2.5 py-0.5 rounded uppercase tracking-wider">
+                      <span className="bg-court/10 dark:bg-court/20 text-court dark:text-signal font-display font-stretch-[72%] font-semibold text-[11px] px-2.5 py-0.5 rounded-full uppercase tracking-[0.08em]">
                         {post.sport_category}
                       </span>
-                      <span className="text-gray-400 dark:text-gray-500 text-xs">
-                        {new Date(post.timestamp).toLocaleDateString()}
+                      <span className="font-display font-stretch-[72%] font-semibold uppercase tracking-[0.06em] text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
+                        {new Date(post.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
 
@@ -825,7 +819,7 @@ export default function Home() {
                     )}
 
                     {/* Main Content: AI Generated Headline & Summary */}
-                    <h2 className="text-xl font-bold mb-3">{post.headline}</h2>
+                    <h2 className="font-display font-stretch-[105%] font-bold text-xl mb-3 leading-snug">{post.headline}</h2>
                     <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">{post.content}</p>
 
                     {/* Grouped all action icons on the left with uniform gaps, pushed Source to the right */}
@@ -848,7 +842,7 @@ export default function Home() {
                             >
                               <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                             </svg>
-                            <span className="text-sm font-semibold">{post.likes || 0}</span>
+                            {(post.likes || 0) > 0 && <span className="text-sm font-semibold tabular-nums">{post.likes}</span>}
                           </button>
 
                           {/* The Comment Button */}
@@ -860,7 +854,7 @@ export default function Home() {
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-active:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
-                            <span className="text-sm font-semibold">{post.commentCount || 0}</span>
+                            {(post.commentCount || 0) > 0 && <span className="text-sm font-semibold tabular-nums">{post.commentCount}</span>}
                           </button>
 
                           {/* The Bookmark Button */}
@@ -899,7 +893,7 @@ export default function Home() {
                           </button>
                         </div>
 
-                        {/* Right Group: Read Source Link pushed strictly to the right edge */}
+                        {/* Right Group: Read source link pushed strictly to the right edge */}
                         <div>
                           <a 
                             href={post.url} 
@@ -907,7 +901,7 @@ export default function Home() {
                             rel="noopener noreferrer"
                             className="text-sm text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-bold"
                           >
-                            Read Source &rarr;
+                            Read source &rarr;
                           </a>
                         </div>
                     </div>
@@ -930,6 +924,10 @@ export default function Home() {
               )}
             </>
           )}
+        </div>
+
+        {/* Desktop-only Live-now rail (renders nothing when there's nothing to show) */}
+        <LiveRail />
         </div>
       </div>
 
