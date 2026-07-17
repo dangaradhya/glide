@@ -38,6 +38,9 @@ export default function ProfileVault() {
   
   const [editPicture, setEditPicture] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  // Inline validation message for edit mode (bad file type / too large / empty name),
+  // shown under the avatar instead of a blocking alert()
+  const [editError, setEditError] = useState("");
 
   // Scroll-to-top button state
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -113,24 +116,34 @@ export default function ProfileVault() {
   // Processes raw native browser file buffers into string blocks safely
   const handleImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      return alert("Please drop a valid image file!");
+      return setEditError("That file isn't an image — use a PNG or JPG.");
     }
     if (file.size > 2 * 1024 * 1024) {
-      return alert("Image must be smaller than 2MB to keep performance fast!");
+      return setEditError("Image is over 2MB — pick a smaller one.");
     }
 
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
         setEditPicture(e.target.result as string);
+        setEditError("");
       }
     };
     reader.readAsDataURL(file);
   };
 
+  // Abandon unsaved edits: restore the inputs from the last-saved profile so the
+  // next visit to edit mode doesn't start from stale, half-changed values
+  const handleCancelEdit = () => {
+    setEditName(userProfile?.name || "");
+    setEditPicture(userProfile?.picture || "");
+    setEditError("");
+    setIsEditingProfile(false);
+  };
+
   // PROFILE PERSISTENCE SAVE HANDLER
   const handleSaveProfile = async () => {
-    if (!editName.trim()) return alert("Name cannot be empty!");
+    if (!editName.trim()) return setEditError("Add a display name before saving.");
     
     // We fall back to a blank string if ID is missing to guarantee the type matches our interface
     const currentId = userProfile?.id || "";
@@ -177,6 +190,24 @@ export default function ProfileVault() {
   // 4. RENDER HELPERS
   const activeData = vault[activeTab];
 
+  // Header activity strip, computed from the vault already in hand. Rendered only
+  // once there's something to count - a row of zeros advertises emptiness.
+  const likedCount = vault.likedPosts.length + vault.likedReels.length;
+  const savedCount = vault.savedPosts.length + vault.savedReels.length;
+  const commentCount = vault.userComments.length;
+  const hasActivity = likedCount + savedCount + commentCount > 0;
+
+  // Empty tabs invite action instead of announcing absence - each one links to
+  // where that kind of item actually gets created.
+  const EMPTY_STATES: Record<typeof activeTab, { heading: string; body: string; cta: string; href: string }> = {
+    likedPosts: { heading: 'Nothing liked yet', body: 'Tap the heart on any post to keep it here.', cta: 'Browse posts', href: '/' },
+    savedPosts: { heading: 'No saved posts', body: 'Bookmark a post to come back to it later.', cta: 'Browse posts', href: '/' },
+    likedReels: { heading: 'No liked reels', body: 'Like a highlight to keep it in your vault.', cta: 'Watch reels', href: '/reels' },
+    savedReels: { heading: 'No saved reels', body: 'Save a highlight to watch it again anytime.', cta: 'Watch reels', href: '/reels' },
+    userComments: { heading: 'No comments yet', body: 'Join the conversation on any post or reel.', cta: 'Browse posts', href: '/' },
+  };
+  const emptyState = EMPTY_STATES[activeTab];
+
   return (
     // Dynamic bg-gray-100/bg-gray-950 classes for Light/Dark mode
     // No extra top padding needed here for the notch - <body>'s pt-[var(--app-banner-height)]
@@ -206,91 +237,109 @@ export default function ProfileVault() {
             {/* User Profile Header */}
             {/* Dynamic background, borders, and shadows for Light/Dark mode */}
             {/* Reduced padding, margin, avatar size, and font sizes for mobile. Scales up at md: breakpoint. */}
-            <div className="w-full max-w-2xl mx-auto mb-8 md:mb-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 md:p-8 shadow-md dark:shadow-2xl transition-colors relative">
-              {isEditingProfile ? (
-                // Editing Layout Panel
-                <div className="flex flex-col space-y-4 w-full">
-                  <h2 className="text-xl font-bold border-b border-gray-100 dark:border-gray-800 pb-2 mb-2">Edit Profile Setup</h2>
-                  
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Display Name</label>
-                    <input 
-                      type="text" 
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 outline-none w-full"
-                    />
-                  </div>
+            <div className="w-full max-w-2xl mx-auto mb-8 md:mb-12 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 md:p-8 shadow-md dark:shadow-2xl transition-colors relative overflow-hidden">
+              {/* Soft Court-Purple identity wash behind the avatar - a tint, not a cover photo */}
+              <div
+                className="absolute inset-x-0 top-0 h-32 pointer-events-none bg-[radial-gradient(ellipse_at_top,rgba(147,51,234,0.10),transparent_70%)] dark:bg-[radial-gradient(ellipse_at_top,rgba(168,85,247,0.14),transparent_70%)]"
+                aria-hidden="true"
+              ></div>
 
-                  {/* INTERACTIVE DRAG-AND-DROP FILE DROPZONE */}
-                  <div className="flex flex-col space-y-1">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Profile Picture</label>
-                    
-                    <div 
-                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                      onDragLeave={() => setIsDragging(false)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setIsDragging(false);
-                        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                          handleImageFile(e.dataTransfer.files[0]);
-                        }
-                      }}
-                      className={`w-full border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-all ${
-                        isDragging 
-                          ? 'border-purple-500 bg-purple-500/10' 
-                          : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/20 hover:bg-gray-100/50 dark:hover:bg-gray-800/30'
-                      }`}
-                    >
+              {isEditingProfile ? (
+                // Edit mode mirrors the read-mode layout: the avatar itself is the
+                // picture control (click to browse, drop an image straight onto it)
+                // and the name edits in place - no separate boxy form panel.
+                <div className="flex flex-col items-center relative">
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        handleImageFile(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    className="relative mb-3 md:mb-4"
+                  >
+                    <label className="cursor-pointer block group" aria-label="Change profile picture">
                       {editPicture ? (
-                        <div className="flex items-center space-x-4 w-full px-2">
-                          <img src={editPicture} alt="Preview" className="w-14 h-14 rounded-full object-cover shadow border border-white/20 shrink-0" />
-                          <div className="text-left flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-green-500">Image uploaded successfully</p>
-                            <p className="text-xs text-gray-400 truncate">Ready to save</p>
-                          </div>
-                          <button 
-                            type="button"
-                            onClick={() => setEditPicture("")}
-                            className="text-xs text-red-500 font-bold hover:underline bg-red-500/10 px-2.5 py-1 rounded-md"
-                          >
-                            Remove
-                          </button>
-                        </div>
+                        <img
+                          src={editPicture}
+                          alt="Profile preview"
+                          className={`w-20 h-20 md:w-28 md:h-28 rounded-full object-cover shadow-lg transition-all border-2 md:border-4 ${
+                            isDragging ? 'border-purple-500 scale-105' : 'border-purple-500/30 group-hover:border-purple-500/60'
+                          }`}
+                        />
                       ) : (
-                        <label className="flex flex-col items-center justify-center cursor-pointer w-full h-full">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className={`w-20 h-20 md:w-28 md:h-28 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shadow-lg transition-all border-2 md:border-4 border-dashed ${
+                          isDragging ? 'border-purple-500 scale-105' : 'border-gray-300 dark:border-gray-700 group-hover:border-purple-500/60'
+                        }`}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                            Drag & drop a image, or <span className="text-purple-500 underline">browse</span>
-                          </span>
-                          <span className="text-[10px] text-gray-400 mt-1">Supports PNG, JPG up to 2MB</span>
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                handleImageFile(e.target.files[0]);
-                              }
-                            }}
-                          />
-                        </label>
+                        </div>
                       )}
-                    </div>
+                      {/* Camera badge - signals the avatar is the tap target */}
+                      <span className="absolute bottom-0 right-0 md:bottom-1 md:right-1 w-7 h-7 rounded-full bg-court text-white flex items-center justify-center shadow-md border-2 border-white dark:border-gray-900 group-hover:bg-signal transition-colors" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleImageFile(e.target.files[0]);
+                          }
+                        }}
+                      />
+                    </label>
                   </div>
 
-                  <div className="flex space-x-3 pt-2">
-                    <button 
-                      onClick={handleSaveProfile} 
-                      className="px-5 py-2 text-xs font-bold bg-purple-600 text-white rounded-full hover:bg-purple-500 transition-colors shadow-md"
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-1">
+                    Click the photo or drop an image — PNG or JPG, up to 2MB
+                  </p>
+                  {editPicture && (
+                    <button
+                      type="button"
+                      onClick={() => setEditPicture("")}
+                      className="text-[11px] font-semibold text-gray-400 hover:text-red-500 transition-colors mb-2"
                     >
-                      Save Changes
+                      Remove photo
                     </button>
-                    <button 
-                      onClick={() => setIsEditingProfile(false)} 
-                      className="px-5 py-2 text-xs font-semibold bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors"
+                  )}
+
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveProfile();
+                      if (e.key === 'Escape') handleCancelEdit();
+                    }}
+                    placeholder="Display name"
+                    autoFocus
+                    className="font-display font-stretch-[105%] font-extrabold text-2xl md:text-3xl text-center bg-transparent border-b-2 border-gray-200 dark:border-gray-700 focus:border-purple-500 outline-none w-full max-w-xs pb-1 mt-1 transition-colors placeholder:text-gray-300 dark:placeholder:text-gray-600 placeholder:font-normal"
+                  />
+                  <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-2 text-center">{userProfile?.email}</p>
+
+                  {editError && (
+                    <p className="text-xs font-semibold text-red-500 mt-3" role="alert">{editError}</p>
+                  )}
+
+                  <div className="flex space-x-3 mt-5">
+                    <button
+                      onClick={handleSaveProfile}
+                      className="px-6 py-2 text-sm font-bold bg-court text-white rounded-full hover:bg-signal transition-colors shadow-md active:scale-95"
+                    >
+                      Save changes
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="px-6 py-2 text-sm font-semibold text-gray-600 dark:text-gray-300 rounded-full border border-gray-200 dark:border-gray-700 hover:border-purple-400 hover:text-court dark:hover:text-signal transition-colors"
                     >
                       Cancel
                     </button>
@@ -298,21 +347,26 @@ export default function ProfileVault() {
                 </div>
               ) : (
                 // Standard Profile Read Mode
-                <div className="flex flex-col items-center">
-                  <button 
+                <div className="flex flex-col items-center relative">
+                  <button
                     onClick={() => setIsEditingProfile(true)}
-                    className="absolute top-5 right-5 text-xs font-bold text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-full border border-purple-500/20 transition-all active:scale-95"
+                    className="absolute top-0 right-0 text-xs font-bold text-court hover:text-signal dark:text-purple-400 dark:hover:text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-full border border-purple-500/20 transition-all active:scale-95"
                   >
-                    Edit Profile
+                    Edit profile
                   </button>
-                  <img 
-                    src={userProfile?.picture} 
-                    alt="Profile" 
-                    className="w-16 h-16 md:w-24 md:h-24 rounded-full border-2 md:border-4 border-gray-200 dark:border-gray-800 shadow-lg mb-3 md:mb-4 object-cover"
+                  <img
+                    src={userProfile?.picture}
+                    alt="Profile"
+                    className="w-16 h-16 md:w-24 md:h-24 rounded-full border-2 md:border-4 border-purple-500/30 shadow-lg mb-3 md:mb-4 object-cover"
                     referrerPolicy="no-referrer"
                   />
-                  <h1 className="text-2xl md:text-3xl font-bold text-center">{userProfile?.name}</h1>
+                  <h1 className="font-display font-stretch-[105%] font-extrabold text-2xl md:text-3xl text-center">{userProfile?.name}</h1>
                   <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-1 text-center">{userProfile?.email}</p>
+                  {hasActivity && (
+                    <p className="font-display font-stretch-[72%] font-semibold uppercase tracking-[0.09em] text-[11px] text-gray-400 dark:text-gray-500 mt-3 tabular-nums">
+                      {likedCount} liked · {savedCount} saved · {commentCount} comment{commentCount === 1 ? '' : 's'}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -329,35 +383,49 @@ export default function ProfileVault() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-4 py-2 font-bold text-sm md:text-base rounded-full transition-all whitespace-nowrap ${
-                    activeTab === tab.id 
-                      // Specific active tab styles for light and dark modes
-                      ? 'bg-gray-900 text-white dark:bg-white dark:text-black' 
+                  // Voice B condensed caps; the active pill is brand purple (this was the
+                  // one interactive surface in the app styled as a black/white inversion)
+                  className={`px-4 py-2 font-display font-stretch-[72%] font-semibold uppercase tracking-[0.07em] text-[13px] md:text-sm rounded-full transition-all whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-court text-white'
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-900'
                   }`}
                 >
-                  {tab.label} <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-gray-700 dark:bg-gray-200' : 'bg-gray-200 dark:bg-gray-800/50'}`}>{vault[tab.id as keyof typeof vault]?.length || 0}</span>
+                  {tab.label}
+                  {/* Zero-count badges hide rather than advertise emptiness */}
+                  {(vault[tab.id as keyof typeof vault]?.length || 0) > 0 && (
+                    <span className={`ml-2 text-xs px-2 py-0.5 rounded-full tabular-nums ${activeTab === tab.id ? 'bg-white/25 text-white' : 'bg-gray-200 dark:bg-gray-800/50'}`}>
+                      {vault[tab.id as keyof typeof vault].length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
 
             {/* The Grid Display */}
             {activeData.length === 0 ? (
-              <div className="text-center py-20 text-gray-500 dark:text-gray-400 font-medium">
-                No items found in this section yet.
+              <div className="flex flex-col items-center text-center py-16 md:py-20">
+                <h3 className="font-display font-stretch-[105%] font-bold text-xl mb-1.5">{emptyState.heading}</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-xs">{emptyState.body}</p>
+                <Link
+                  href={emptyState.href}
+                  className="px-6 py-2.5 text-sm font-bold bg-court text-white rounded-full hover:bg-signal transition-colors shadow-md active:scale-95"
+                >
+                  {emptyState.cta}
+                </Link>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 
                 {activeData.map((item: any) => (
                   // Dynamic card backgrounds matching the main feed
-                  <div key={item.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-md dark:shadow-lg flex flex-col h-full group hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+                  <div key={item.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-md dark:shadow-lg flex flex-col h-full group hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
                     
                     {/* Render Post Layout */}
                     {item.headline && !item.text && (
                       <>
                         <div className="flex justify-between items-center mb-3">
-                          <span className="bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest">
+                          <span className="bg-court/10 dark:bg-court/20 text-court dark:text-signal font-display font-stretch-[72%] font-semibold text-[11px] px-2.5 py-0.5 rounded-full uppercase tracking-[0.08em]">
                             {item.sport_category}
                           </span>
                         </div>
@@ -369,7 +437,7 @@ export default function ProfileVault() {
                         <h3 className="text-md font-bold mb-2 line-clamp-2 leading-tight">{item.headline}</h3>
                         <div className="mt-auto pt-4 flex justify-between items-center">
                           <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-xs text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300 font-bold">
-                            Read Original &rarr;
+                            Read original &rarr;
                           </a>
                         </div>
                       </>
@@ -398,23 +466,20 @@ export default function ProfileVault() {
                     {item.text && (item.post_headline || item.reel_title) && (
                       <>
                         <div className="flex justify-between items-center mb-4">
-                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded uppercase tracking-widest ${item.reel_title ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'}`}>
-                            {item.reel_title ? 'Reel Comment' : 'Post Comment'}
+                          <span className={`font-display font-stretch-[72%] font-semibold text-[11px] px-2.5 py-0.5 rounded-full uppercase tracking-[0.08em] ${item.reel_title ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-court/10 dark:bg-court/20 text-court dark:text-signal'}`}>
+                            {item.reel_title ? 'Reel comment' : 'Post comment'}
                           </span>
                           <span className="text-gray-400 dark:text-gray-500 text-xs">
                             {new Date(item.timestamp + 'Z').toLocaleDateString()}
                           </span>
                         </div>
                         
-                        {/* The Comment Bubble */}
-                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4 rounded-xl rounded-tl-none mb-4 relative">
-                          <svg className="w-6 h-6 text-gray-200 dark:text-gray-700 absolute -top-3 -left-1 transform -rotate-12" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M10 3a1 1 0 01.832.445l8 12a1 1 0 01-.832 1.555h-16a1 1 0 01-.832-1.555l8-12A1 1 0 0110 3z" />
-                          </svg>
-                          <p className="text-sm text-gray-800 dark:text-gray-200 font-medium italic relative z-10 break-words">
-                            "{item.text}"
+                        {/* The comment itself - a clean brand-purple quote bar instead of a speech bubble */}
+                        <blockquote className="border-l-2 border-court pl-4 py-1 mb-4">
+                          <p className="text-sm text-gray-800 dark:text-gray-200 font-medium break-words">
+                            {item.text}
                           </p>
-                        </div>
+                        </blockquote>
 
                         {/* The Context of what they commented on */}
                         <div className="mt-auto border-t border-gray-100 dark:border-gray-800 pt-3">
