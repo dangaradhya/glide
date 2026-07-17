@@ -22,6 +22,7 @@ import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import Brand from '@/components/Brand';
 // PostHog hook (provider wraps the app in providers.tsx) for search analytics
 import { usePostHog } from '@posthog/react';
 
@@ -609,9 +610,7 @@ export default function Home() {
           {/* Changed mb-4 to mb-2 and gap-y-4 to gap-y-3 to pull the search bar closer to the top elements */}
           <div className="flex flex-wrap justify-between items-center w-full mb-2 md:mb-6 gap-y-3">
             
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent shrink-0 order-1">
-              Glide
-            </h1>
+            <Brand className="shrink-0 order-1" />
             
             {/* The Global Search Bar Component */}
             <div className="w-full md:w-auto md:flex-1 md:max-w-sm mx-0 md:mx-4 relative order-3 md:order-2 z-40">

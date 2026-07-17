@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo, Geist, Geist_Mono } from "next/font/google";
 // Integrated Google OAuth Provider for Authentication
 import { GoogleOAuthProvider } from '@react-oauth/google'; 
 import "./globals.css";
@@ -16,6 +16,15 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Display face of the design language (see globals.css tokens). The width axis is
+// the whole point: one file serves both the expanded-black wordmark/headline voice
+// and the condensed-caps label/score voice, selected via font-stretch.
+const archivo = Archivo({
+  variable: "--font-archivo",
+  subsets: ["latin"],
+  axes: ["wdth"],
 });
 
 // Upgraded the metadata for Browser Tabs, SEO, and Social Sharing
@@ -67,7 +76,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${archivo.variable} h-full antialiased`}
     >
       {/* Added light/dark default background and text colors, plus a smooth CSS transition */}
       {/* overscroll-y-contain stops the browser's own native pull-to-refresh/bounce from
