@@ -4,6 +4,19 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-archivo);
+}
+
+/* ── Design-language tokens ─────────────────────────────────────
+   The named palette every later phase consumes as utilities (bg-court,
+   text-signal, ...) instead of restating raw hex. Court/Signal are the existing
+   brand purples (purple-600/purple-500) - named, not changed. */
+@theme {
+  --color-court: #9333EA;   /* primary actions, active states */
+  --color-signal: #A855F7;  /* hover, dark-mode accent lift */
+  --color-live: #22C55E;    /* live states (existing green) */
+  --color-ink: #0B0A12;     /* dark ground, violet-biased near-black */
+  --color-chalk: #F8F8FB;   /* light ground, violet-biased near-white */
 }
 
 /* Tell Tailwind v4 to trigger 'dark:' classes when our toggle button clicks! */
@@ -22,11 +35,44 @@
   --app-safe-bottom: env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px));
 
   /* Single source of truth for how much space is reserved at the top of the app:
-     40px of marketing banner PLUS whatever notch/status-bar space it also has to
-     clear. On native (AppBanner.tsx), this gets overridden to just var(--app-safe-top)
-     - the banner disappears there, but the notch/status-bar clearance must NOT, so it
-     collapses to "notch only," never to a flat 0px. body's top padding, the banner's
-     own height, and any viewport-locked page (Reels) all reference this ONE variable,
-     so it's impossible for them to drift out of sync. */
-  --app-banner-height: calc(40px + var(--app-safe-top));
+     32px of marketing banner PLUS whatever notch/status-bar space it also has to
+     clear. On native, and on web after the user dismisses the banner (AppBanner.tsx),
+     this gets overridden to just var(--app-safe-top) - the banner disappears there,
+     but the notch/status-bar clearance must NOT, so it collapses to "notch only,"
+     never to a flat 0px. body's top padding, the banner's own height, and any
+     viewport-locked page (Reels) all reference this ONE variable, so it's impossible
+     for them to drift out of sync. */
+  --app-banner-height: calc(32px + var(--app-safe-top));
+}
+
+/* ── Brand wordmark ────────────────────────────────────────────────────────────
+   Voice A of the design language: Archivo Expanded Black caps in a tight purple
+   duotone (replacing the old blue→purple gradient). Plain CSS rather than
+   utilities because font-stretch is animated - the glide-in keyframe sweeping the
+   width axis from condensed to expanded is the design language's signature motion
+   (applied by Brand.tsx once per browser session, never under reduced motion). */
+.brand-wordmark {
+  font-family: var(--font-archivo);
+  font-weight: 900;
+  font-stretch: 125%;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  background-image: linear-gradient(100deg, #9333EA, #A855F7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dark .brand-wordmark {
+  /* Lifted a step on dark grounds so the duotone doesn't sink into the ink */
+  background-image: linear-gradient(100deg, #A855F7, #C084FC);
+}
+.brand-wordmark--animate {
+  animation: brand-glide-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes brand-glide-in {
+  from { font-stretch: 62%; opacity: 0.15; }
+  to   { font-stretch: 125%; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-wordmark--animate { animation: none; }
 }

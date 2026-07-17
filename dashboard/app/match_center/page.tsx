@@ -11,6 +11,7 @@ import AuthButton from '@/components/AuthButton';
 // preferences routes keep using apiFetch.
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import Brand from '@/components/Brand';
 import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel } from '@/lib/leagues';
 
 // How stale a league's freshest row can be before the scoreboard card gives way to
@@ -506,9 +507,7 @@ export default function LiveUpdatesPage() {
 
         {/* Header Section */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-            Glide
-          </h1>
+          <Brand />
 
           <div className="flex items-center space-x-4">
             <ThemeToggle />

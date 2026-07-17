@@ -10,6 +10,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import Brand from '@/components/Brand';
 
 // The main ProfileVault component that displays the user's liked/saved posts and reels in a tabbed interface
 export default function ProfileVault() {
@@ -187,9 +188,7 @@ export default function ProfileVault() {
         {/* Header Section - Text-only header matching the other pages */}
         <div className="flex items-center justify-between mb-12">
           <Link href="/" className="hover:opacity-80 transition-opacity">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-              Glide
-            </h1>
+            <Brand />
           </Link>
           {/* Added ThemeToggle next to the AuthButton */}
           <div className="flex items-center space-x-4">

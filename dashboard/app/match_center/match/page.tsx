@@ -11,6 +11,7 @@ import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import ThemeToggle from '@/components/ThemeToggle';
+import Brand from '@/components/Brand';
 import AuthButton from '@/components/AuthButton';
 import BottomNav from '@/components/BottomNav';
 import { API_BASE_URL } from '@/lib/api';
@@ -308,9 +309,7 @@ export default function MatchDetailPage() {
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
       <div className="max-w-6xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-            Glide
-          </h1>
+          <Brand />
           <div className="flex items-center space-x-4">
             <ThemeToggle />
             <AuthButton />
