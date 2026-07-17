@@ -9,6 +9,7 @@ import AuthButton from '@/components/AuthButton';
 import ThemeToggle from '@/components/ThemeToggle';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch } from '@/lib/api';
+import BottomNav from '@/components/BottomNav';
 
 // The main ProfileVault component that displays the user's liked/saved posts and reels in a tabbed interface
 export default function ProfileVault() {
@@ -181,8 +182,8 @@ export default function ProfileVault() {
     // (see layout.tsx) already reserves that space for every page. Adding it again here
     // would double-count the notch inset on top of what body already reserves.
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
-      <div className="max-w-6xl mx-auto">
-        
+      <div className="max-w-6xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
+
         {/* Header Section - Text-only header matching the other pages */}
         <div className="flex items-center justify-between mb-12">
           <Link href="/" className="hover:opacity-80 transition-opacity">
@@ -435,6 +436,9 @@ export default function ProfileVault() {
           </>
         )}
       </div>
+
+      {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
+      <BottomNav active="profile" />
 
       {/* Positioned bottom right. Only visible when scrolled past 400px. Animated entry/hover */}
       {showScrollTop && (
