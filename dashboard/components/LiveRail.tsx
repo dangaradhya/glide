@@ -1,49 +1,72 @@
 // components/LiveRail.tsx
 //
-// Desktop-only "Live now" rail beside the Posts feed - the first piece of layout
-// that treats desktop as its own surface instead of a stretched phone. Fed by the
-// existing public /api/matches route (no auth, same as Match Center); shows live
-// matches first, falls back to today's upcoming games, and renders nothing at all
-// when there's neither - the feed's flex layout then re-centers on its own, so the
-// page never shows an empty box. Rows link to the match detail view. The rail is
-// decorative: a failed fetch just means no rail, never an error state.
+// Desktop-only scores rail beside the Posts feed - the first piece of layout that
+// treats desktop as its own surface instead of a stretched phone. Fed by the same
+// public /api/matches route as Match Center. Fill order keeps the rail alive around
+// the clock: live matches first, then soon-upcoming fixtures (next 48h), then
+// recently-finished results (last 48h), capped at MAX_ROWS. Logged-in users with
+// launchpad picks see only their leagues - matching Match Center's own filtering -
+// unless that leaves the rail empty, in which case it falls back to all leagues
+// (a filled rail beats a hidden one; the per-row league label keeps it honest).
+// Renders nothing when there's no data at all or the fetch fails - the feed's flex
+// layout then re-centers on its own. The rail is decorative: never an error state.
 "use client";
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { API_BASE_URL } from '@/lib/api';
+import { API_BASE_URL, apiFetch } from '@/lib/api';
 import { AVAILABLE_LEAGUES, Match, parseUtc } from '@/lib/leagues';
 
 const POLL_INTERVAL_MS = 60 * 1000; // matches Match Center's own polling cadence
 const MAX_ROWS = 8;
+const FILL_WINDOW_MS = 48 * 3600 * 1000;
 
-function railRows(rows: Match[]): Match[] {
-  const named = rows.filter(m => m.home_team && m.away_team);
-  const live = named.filter(m => m.status === 'live');
-  if (live.length > 0) return live.slice(0, MAX_ROWS);
+function railRows(rows: Match[], preferredLeagues: string[] | null): Match[] {
+  let named = rows.filter(m => m.home_team && m.away_team);
+  if (preferredLeagues && preferredLeagues.length > 0) {
+    const filtered = named.filter(m => preferredLeagues.includes(m.league_id));
+    if (filtered.length > 0) named = filtered;
+  }
 
-  // Nothing live: today's still-upcoming games, soonest first
   const now = Date.now();
-  const endOfDay = new Date();
-  endOfDay.setHours(23, 59, 59, 999);
-  return named
+  const live = named.filter(m => m.status === 'live');
+
+  const upcoming = named
     .filter(m => m.status === 'scheduled')
     .filter(m => {
       const t = parseUtc(m.start_time).getTime();
-      return t > now && t <= endOfDay.getTime();
+      return t > now && t <= now + FILL_WINDOW_MS;
     })
-    .sort((a, b) => parseUtc(a.start_time).getTime() - parseUtc(b.start_time).getTime())
-    .slice(0, MAX_ROWS);
+    .sort((a, b) => parseUtc(a.start_time).getTime() - parseUtc(b.start_time).getTime());
+
+  const finished = named
+    .filter(m => m.status === 'final')
+    .filter(m => {
+      const t = parseUtc(m.start_time).getTime();
+      return t >= now - FILL_WINDOW_MS;
+    })
+    .sort((a, b) => parseUtc(b.start_time).getTime() - parseUtc(a.start_time).getTime());
+
+  return [...live, ...upcoming, ...finished].slice(0, MAX_ROWS);
+}
+
+// Kickoff label: time alone for today, "Sat 7:30 PM" beyond that
+function kickoffLabel(startTime: string): string {
+  const start = parseUtc(startTime);
+  if (isNaN(start.getTime())) return '';
+  const time = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const now = new Date();
+  const sameDay = start.getFullYear() === now.getFullYear()
+    && start.getMonth() === now.getMonth() && start.getDate() === now.getDate();
+  return sameDay ? time : `${start.toLocaleDateString([], { weekday: 'short' })} ${time}`;
 }
 
 function RailRow({ match }: { match: Match }) {
   const league = AVAILABLE_LEAGUES.find(l => l.id === match.league_id);
   const isLive = match.status === 'live';
-  const hasScores = isLive && match.home_score != null && match.away_score != null;
-  const kickoff = parseUtc(match.start_time);
-  const timeLabel = isLive
-    ? (match.clock || 'Live')
-    : isNaN(kickoff.getTime()) ? '' : kickoff.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const isFinal = match.status === 'final';
+  const hasScores = !isLive && !isFinal ? false : match.home_score != null && match.away_score != null;
+  const timeLabel = isLive ? (match.clock || 'Live') : isFinal ? 'Final' : kickoffLabel(match.start_time);
 
   return (
     <Link
@@ -67,7 +90,7 @@ function RailRow({ match }: { match: Match }) {
           <span className="font-bold tabular-nums text-gray-900 dark:text-white shrink-0">
             {match.home_score}–{match.away_score}
           </span>
-        ) : (isLive && match.score_summary) ? (
+        ) : ((isLive || isFinal) && match.score_summary) ? (
           <span className="font-bold tabular-nums text-gray-900 dark:text-white shrink-0 text-xs truncate max-w-[90px]">
             {match.score_summary}
           </span>
@@ -80,13 +103,33 @@ function RailRow({ match }: { match: Match }) {
 export default function LiveRail() {
   const [rows, setRows] = useState<Match[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // null = no preference filtering (logged out, no picks yet, or the call failed)
+  const [preferredLeagues, setPreferredLeagues] = useState<string[] | null>(null);
+  const [prefsResolved, setPrefsResolved] = useState(false);
+
+  // Resolve launchpad picks once - the same route Match Center filters by, so the
+  // rail and the dashboard always agree on which leagues a user follows
+  useEffect(() => {
+    if (!localStorage.getItem('glide_token')) {
+      setPrefsResolved(true);
+      return;
+    }
+    apiFetch('/api/users/me/preferences')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (data?.preferences?.length > 0) setPreferredLeagues(data.preferences);
+      })
+      .catch(() => { /* no filtering beats no rail */ })
+      .finally(() => setPrefsResolved(true));
+  }, []);
 
   useEffect(() => {
+    if (!prefsResolved) return;
     const load = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/matches`);
         if (!res.ok) return;
-        setRows(railRows(await res.json()));
+        setRows(railRows(await res.json(), preferredLeagues));
       } catch {
         // Decorative rail: a failed fetch means no rail, never an error state
       } finally {
@@ -98,7 +141,7 @@ export default function LiveRail() {
       if (document.visibilityState === 'visible') load();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [prefsResolved, preferredLeagues]);
 
   if (!loaded || rows.length === 0) return null;
   const anyLive = rows.some(m => m.status === 'live');
@@ -108,7 +151,7 @@ export default function LiveRail() {
       <div className="sticky top-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-md dark:shadow-lg overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <span className="font-display font-stretch-[72%] font-semibold uppercase tracking-[0.09em] text-xs text-gray-900 dark:text-white">
-            {anyLive ? 'Live now' : 'Up next today'}
+            {anyLive ? 'Live now' : 'Scores & fixtures'}
           </span>
           {anyLive && <span className="w-2 h-2 rounded-full bg-live animate-pulse motion-reduce:animate-none" aria-hidden="true"></span>}
         </div>

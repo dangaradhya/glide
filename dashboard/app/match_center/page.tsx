@@ -137,12 +137,12 @@ function MatchRow({ match }: { match: Match }) {
               <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
             </span>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+            <span className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
               Live{match.clock ? ` · ${match.clock}` : ''}
             </span>
           </>
         ) : (
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          <span className="font-display font-stretch-[72%] text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             {isFinal ? 'Final' : formatKickoffTime(match.start_time)}
           </span>
         )}
@@ -225,7 +225,7 @@ function LeagueScoreboardCard({
         <div className={`absolute inset-0 bg-gradient-to-br ${league.color} opacity-90 group-hover:opacity-100 transition-opacity`}></div>
         <div className="relative px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <span className="text-[10px] uppercase tracking-widest text-white/80 font-bold block">
+            <span className="font-display font-stretch-[72%] text-[10px] uppercase tracking-widest text-white/80 font-bold block">
               {league.category}
             </span>
             <h3 className="text-lg font-bold text-white leading-tight">
@@ -249,7 +249,7 @@ function LeagueScoreboardCard({
       {visibleGroups.map(group => (
         <div key={group.key}>
           <div className="px-4 py-1.5 bg-gray-50 dark:bg-gray-950/60 border-y border-gray-100 dark:border-gray-800 first:border-t-0">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+            <span className="font-display font-stretch-[72%] text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
               {group.label}
             </span>
           </div>
@@ -288,7 +288,7 @@ function OutboundLeagueCard({ league }: { league: League }) {
 
       <div className="relative p-6 h-full flex flex-col justify-between min-h-[140px]">
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-white/80 font-bold mb-1 block">
+          <span className="font-display font-stretch-[72%] text-[10px] uppercase tracking-widest text-white/80 font-bold mb-1 block">
             {league.category}
           </span>
           <h3 className="text-xl font-bold text-white leading-tight">
@@ -572,7 +572,7 @@ export default function LiveUpdatesPage() {
                         </svg>
                       )}
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">{league.category}</span>
+                    <span className="font-display font-stretch-[72%] text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">{league.category}</span>
                     <span className={`text-sm font-semibold ${isSelected ? 'text-purple-700 dark:text-purple-300' : 'text-gray-700 dark:text-gray-200'}`}>
                       {league.name}
                     </span>
@@ -596,7 +596,7 @@ export default function LiveUpdatesPage() {
               <button
                 onClick={savePreferences}
                 disabled={selectedLeagues.length === 0}
-                className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-lg hover:shadow-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="px-6 py-2 bg-court text-white font-bold rounded-full hover:bg-signal disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md"
               >
                 Save Launchpad
               </button>

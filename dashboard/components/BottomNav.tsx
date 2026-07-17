@@ -8,6 +8,7 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 type BottomNavTab = 'posts' | 'reels' | 'match_center' | 'profile';
 
@@ -27,6 +28,15 @@ export default function BottomNav({
 }) {
   const isOverlay = variant === 'overlay';
 
+  // Profile is a dead tab when logged out (the page just bounces to home), so it
+  // only renders once a token is confirmed - post-hydration, same pattern as
+  // AuthButton, since the static prerender can't know the auth state
+  const [authed, setAuthed] = useState(false);
+  useEffect(() => {
+    setAuthed(!!localStorage.getItem('glide_token'));
+  }, []);
+  const tabs = authed ? TABS : TABS.filter(t => t.id !== 'profile');
+
   const containerClass = isOverlay
     ? "md:hidden fixed bottom-0 left-0 w-full bg-gradient-to-t from-black/95 via-black/70 to-transparent flex justify-around items-center h-[calc(72px_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4"
     : "md:hidden fixed bottom-0 left-0 w-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 flex justify-around items-center h-[calc(4rem_+_var(--app-safe-bottom))] z-[60] pb-[var(--app-safe-bottom)] px-4";
@@ -41,7 +51,7 @@ export default function BottomNav({
 
   return (
     <div className={containerClass}>
-      {TABS.map((tab) =>
+      {tabs.map((tab) =>
         tab.id === active ? (
           <span key={tab.id} className={activeClass}>
             {tab.label}

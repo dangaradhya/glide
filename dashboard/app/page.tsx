@@ -615,7 +615,8 @@ export default function Home() {
             <Brand className="shrink-0 order-1" />
             
             {/* The Global Search Bar Component */}
-            <div className="w-full md:w-auto md:flex-1 md:max-w-sm mx-0 md:mx-4 relative order-3 md:order-2 z-40">
+            {/* lg widens the cap so the bar fills the header's dead space on big screens */}
+            <div className="w-full md:w-auto md:flex-1 md:max-w-sm lg:max-w-xl mx-0 md:mx-4 relative order-3 md:order-2 z-40">
               <div className="relative">
                 <input 
                   type="text" 
@@ -860,7 +861,7 @@ export default function Home() {
                           {/* The Bookmark Button */}
                           <button 
                             onClick={() => handleSave(post.id)}
-                            className={`flex items-center gap-1.5 transition-colors group ${post.userSaved ? 'text-blue-500' : 'text-gray-400 hover:text-blue-500'}`}
+                            className={`flex items-center gap-1.5 transition-colors group ${post.userSaved ? 'text-court dark:text-signal' : 'text-gray-400 hover:text-court dark:hover:text-signal'}`}
                             title="Save this post"
                           >
                             <svg 

@@ -146,7 +146,7 @@ function MatchDetail() {
         <p className="text-gray-500 dark:text-gray-400 max-w-md">
           This match may have finished more than a week ago and rolled out of Glide&apos;s window.
         </p>
-        <Link href="/match_center" className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-lg hover:shadow-lg hover:opacity-90 transition-all">
+        <Link href="/match_center" className="px-6 py-2 bg-court text-white font-bold rounded-full hover:bg-signal transition-colors shadow-md">
           Back to Match Center
         </Link>
       </div>
@@ -178,7 +178,7 @@ function MatchDetail() {
           <div className={`absolute inset-0 bg-gradient-to-br ${league?.color ?? 'from-gray-700 to-gray-900'}`}></div>
           <div className="relative px-4 pt-4 pb-6 md:px-8">
             <div className="flex items-center justify-between gap-3 mb-6">
-              <span className="text-[11px] uppercase tracking-widest text-white/80 font-bold">
+              <span className="font-display font-stretch-[72%] text-[11px] uppercase tracking-widest text-white/80 font-bold">
                 {league?.name ?? match.league_id}
               </span>
               {league && (
@@ -212,12 +212,12 @@ function MatchDetail() {
                         <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400"></span>
                       </span>
-                      <span className="text-xs font-bold uppercase tracking-wider text-white">
+                      <span className="font-display font-stretch-[72%] text-xs font-bold uppercase tracking-wider text-white">
                         Live{match.clock ? ` · ${match.clock}` : ''}
                       </span>
                     </>
                   ) : (
-                    <span className="text-xs font-semibold uppercase tracking-wider text-white/80">
+                    <span className="font-display font-stretch-[72%] text-xs font-semibold uppercase tracking-wider text-white/80">
                       {isFinal ? 'Final' : startLabel}
                     </span>
                   )}
@@ -251,7 +251,7 @@ function MatchDetail() {
           <div className="border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                <tr className="font-display font-stretch-[72%] text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
                   <th className="text-left font-bold px-4 py-2">Team</th>
                   {Array.from({ length: linescoreCols }, (_, i) => (
                     <th key={i} className="font-bold px-2 py-2 text-center w-9">{i + 1}</th>
