@@ -19,6 +19,7 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const appleSignin = require('apple-signin-auth');
 const { ESPN_LEAGUES } = require('./espnLeagues'); // league_id -> ESPN (sport, slug), for the box-score summary route
+const { uploadProfilePicture } = require('./r2'); // R2 object storage for self-uploaded profile pictures (see Phase 4a)
 
 // 2. INITIALIZATION
 // This creates our application instance. Think of this like initializing your Axum router in Rust.
@@ -1611,7 +1612,7 @@ app.get('/api/users/me/vault', authenticateToken, async (req, res) => {
 });
 
 // PUT: Update the user's global profile (Name & Picture)
-app.put('/api/users/me/profile', authenticateToken, (req, res) => {
+app.put('/api/users/me/profile', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     const { name, picture } = req.body;
 
@@ -1619,13 +1620,26 @@ app.put('/api/users/me/profile', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'Name and picture are required.' });
     }
 
+    // A freshly-uploaded picture arrives as a base64 data URL (see profile/page.tsx's
+    // FileReader) and needs to go to R2. An unchanged OAuth-provider picture or the
+    // ui-avatars.com fallback is already a plain URL - pass those through untouched.
+    let pictureUrl = picture;
+    if (picture.startsWith('data:image')) {
+        try {
+            pictureUrl = await uploadProfilePicture(userId, picture);
+        } catch (uploadErr) {
+            console.error("Failed to upload profile picture to R2:", uploadErr.message);
+            return res.status(500).json({ error: 'Failed to upload profile picture' });
+        }
+    }
+
     // Update the master users table with the new custom profile data
-    db.run(`UPDATE users SET name = ?, picture = ? WHERE id = ?`, [name, picture, userId], function(err) {
+    db.run(`UPDATE users SET name = ?, picture = ? WHERE id = ?`, [name, pictureUrl, userId], function(err) {
         if (err) {
             console.error("Failed to update profile:", err.message);
             return res.status(500).json({ error: 'Failed to update profile in database' });
         }
-        res.status(200).json({ success: true, message: 'Profile synced globally!' });
+        res.status(200).json({ success: true, message: 'Profile synced globally!', picture: pictureUrl });
     });
 });
 
