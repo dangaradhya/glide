@@ -9,6 +9,7 @@
 "use client";
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 type TopTab = 'posts' | 'reels' | 'match_center' | 'profile';
 
@@ -22,9 +23,18 @@ const TABS: { id: TopTab; href: string; label: string }[] = [
 const VOICE_B = "font-display font-stretch-[72%] font-semibold uppercase tracking-[0.09em] text-base pb-1 whitespace-nowrap";
 
 export default function TopTabs({ active, className = "" }: { active?: TopTab; className?: string }) {
+  // Profile is a dead tab when logged out (the page just bounces to home), so it
+  // only renders once a token is confirmed - post-hydration, same pattern as
+  // AuthButton, since the static prerender can't know the auth state
+  const [authed, setAuthed] = useState(false);
+  useEffect(() => {
+    setAuthed(!!localStorage.getItem('glide_token'));
+  }, []);
+  const tabs = authed ? TABS : TABS.filter(t => t.id !== 'profile');
+
   return (
     <div className={`hidden md:flex justify-center gap-8 ${className}`.trim()}>
-      {TABS.map((tab) =>
+      {tabs.map((tab) =>
         tab.id === active ? (
           <span key={tab.id} className={`${VOICE_B} text-gray-900 dark:text-white border-b-2 border-court cursor-default`}>
             {tab.label}
