@@ -75,7 +75,7 @@ async function batchFormatWithGemini(articlesArray) {
     
     Return ONLY a valid JSON ARRAY containing objects with exact following keys (no markdown formatting, no code blocks):
     - sport_category: (e.g., "Football", "Golf", "Formula 1")
-    - headline: (A punchy, exciting headline)
+    - headline: (A punchy, exciting headline. Sentence case only - capitalize the first word and proper nouns/acronyms like MLB or NBA, never write whole words in ALL CAPS. At most one exclamation mark, and avoid the "SHOUTED PHRASE: fragment" colon pattern)
     - content: (The rewritten summary, max 2 sentences. Make it sound exciting)
     - excitement_level: (A number from 1 to 10)
     - url: (You MUST include the exact original URL provided in the raw data)

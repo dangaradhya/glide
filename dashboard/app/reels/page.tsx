@@ -21,6 +21,7 @@ import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import TopTabs from '@/components/TopTabs';
 
 function ReelsContent() {
   // 2. STATE MANAGEMENT
@@ -644,17 +645,7 @@ function ReelsContent() {
 
       {/* Desktop Navigation Bar (Hidden on Mobile) */}
       <div className="absolute top-10 w-full z-50 p-6 hidden md:flex justify-center pointer-events-none transition-all">
-        <div className="pointer-events-auto flex gap-6 md:gap-8">
-          <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Posts
-          </Link>
-          <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1 cursor-default">
-            Reels
-          </span>
-          <Link href="/match_center" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Match Center
-          </Link>
-        </div>
+        <TopTabs active="reels" className="pointer-events-auto" />
       </div>
 
       {/* Loading check updated from 'page === 1' to 'reels.length === 0' */}

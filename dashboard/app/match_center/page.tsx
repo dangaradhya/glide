@@ -12,6 +12,7 @@ import AuthButton from '@/components/AuthButton';
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import Brand from '@/components/Brand';
+import TopTabs from '@/components/TopTabs';
 import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel } from '@/lib/leagues';
 
 // How stale a league's freshest row can be before the scoreboard card gives way to
@@ -517,17 +518,7 @@ export default function LiveUpdatesPage() {
 
         {/* Navigation Section */}
         {/* HIGHLIGHT: Hidden on mobile (hidden md:flex), safely centered on desktop */}
-        <div className="hidden md:flex justify-center space-x-8 mb-8">
-          <Link href="/" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Posts
-          </Link>
-          <Link href="/reels" className="text-gray-500 dark:text-gray-400 font-bold text-lg hover:text-gray-900 dark:hover:text-white transition-colors">
-            Reels
-          </Link>
-          <span className="text-gray-900 dark:text-white font-bold text-lg border-b-2 border-purple-500 pb-1 cursor-default">
-            Match Center
-          </span>
-        </div>
+        <TopTabs active="match_center" className="mb-8" />
 
         {/* Main Content Area - Conditional rendering based on authentication and preferences state.
             The spinner also holds until the first scores fetch settles, so the dashboard never
