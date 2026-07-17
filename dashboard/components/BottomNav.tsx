@@ -1,20 +1,21 @@
 // components/BottomNav.tsx
 //
-// Shared mobile bottom tab bar (Posts / Reels / Match Center), previously hand-copied
-// with drifting styles across app/page.tsx, app/reels/page.tsx, and
-// app/match_center/page.tsx. Two visual variants exist on purpose, not by accident:
+// Shared mobile bottom tab bar (Posts / Reels / Match Center / Profile), previously hand-copied
+// with drifting styles across app/page.tsx, app/reels/page.tsx, app/match_center/page.tsx,
+//  and app/profile/page.tsx. Two visual variants exist on purpose, not by accident:
 // "standard" (Posts/Match Center - light/dark-mode-aware, bordered) and "overlay"
 // (Reels - always-dark gradient since it sits on top of video content, taller).
 "use client";
 
 import Link from 'next/link';
 
-type BottomNavTab = 'posts' | 'reels' | 'match_center';
+type BottomNavTab = 'posts' | 'reels' | 'match_center' | 'profile';
 
 const TABS: { id: BottomNavTab; href: string; label: string }[] = [
   { id: 'posts', href: '/', label: 'Posts' },
   { id: 'reels', href: '/reels', label: 'Reels' },
   { id: 'match_center', href: '/match_center', label: 'Match Center' },
+  { id: 'profile', href: '/profile', label: 'Profile' },
 ];
 
 export default function BottomNav({
