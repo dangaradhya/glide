@@ -67,6 +67,19 @@ export interface Match {
   last_updated: string;
 }
 
+// The competition-level name a row's tournament string belongs to, used for the
+// Match Center filter chips and the LiveRail context label. The raw strings are
+// per-match: cricket rows are "match title · series" (the competition is the LAST
+// segment), tennis rows are "Tournament · Draw" (the competition is the FIRST
+// segment), and golf rows already carry just the tour name.
+export function tournamentFilterKey(leagueId: string, tournament: string | null): string | null {
+  if (!tournament) return null;
+  const parts = tournament.split(' · ');
+  if (leagueId === 'cricket') return parts[parts.length - 1].trim() || null;
+  if (leagueId === 'atp') return parts[0].trim() || null;
+  return tournament.trim() || null;
+}
+
 // SQLite's CURRENT_TIMESTAMP writes UTC but without a timezone marker
 // ("2026-07-16 00:34:03"), which new Date() would misread as local time.
 // start_time is already ISO-with-Z and passes through untouched.
