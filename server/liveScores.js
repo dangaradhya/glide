@@ -38,6 +38,12 @@ const { ESPN_LEAGUES } = require('./espnLeagues');
 const FIXTURES_DAYS_BACK = 7;
 const FIXTURES_DAYS_AHEAD = 21;
 
+// Cricket's forward window is deliberately shorter than the team sports': a cricket
+// fan decides around the next week of play, T20 leagues schedule densely enough that
+// +10 days still fills the card, and every extra day is one more discovery request
+// per hourly sweep (see runCricketFixturesCycle).
+const CRICKET_FIXTURES_DAYS_AHEAD = 10;
+
 // ESPN's status.type.state is a clean 3-value model across every sport it covers - much
 // simpler than chasing per-sport in-progress codes the way API-Sports required.
 function normalizeEspnStatus(state) {
@@ -304,25 +310,45 @@ async function runEspnFixturesCycle() {
 
 // Hourly cricket fixtures sweep - cricket's version of runEspnFixturesCycle, so
 // cricket cards get "last matchday + upcoming" day sections like team sports do.
-// The header feed only carries today-ish matches (finished ones vanish within hours),
-// but each active series' bare scoreboard exposes a calendar of its match days, and
-// single-date queries return finished matches with full scores plus future fixtures
-// (the ?dates=A-B range form 404s for cricket, so days are fetched individually).
-// Only calendar days inside the same -7/+21 day window as the team-sport sweep are
-// requested, so stale or far-future matches never enter the DB at all. Limitation:
-// a series that fully ended before ever appearing here is undiscoverable (its id
-// left the header feed) - coverage is forward-looking from first sighting.
+// Two stages:
+//   1. DISCOVERY - which series exist? There's no stable league list for cricket
+//      (series ids are born and die with each tour/season), and the bare header
+//      feed only names series with a match TODAY. But it accepts ?dates=YYYYMMDD,
+//      so asking it once per day across the whole sweep window surfaces every
+//      series with any match in-window - including tours whose first match is
+//      days away and series that already finished (previously undiscoverable 
+//      once their id left today's header).
+//   2. EXPANSION - each discovered series' bare scoreboard exposes a calendar of
+//      its match days, and single-date queries return finished matches with full
+//      scores plus future fixtures (the ?dates=A-B range form 404s for cricket,
+//      so days are fetched individually). Only calendar days inside the window
+//      are requested, so stale or far-future matches never enter the DB at all.
 async function runCricketFixturesCycle() {
     console.log('🏏📅 Starting cricket fixtures sweep...');
     try {
-        const headerRes = await fetch(CRICKET_HEADER_URL);
-        const headerJson = await headerRes.json();
-        const seriesList = (headerJson.sports?.[0]?.leagues || [])
-            .map((l) => ({ id: l.id, name: l.name }))
-            .filter((s) => s.id);
-
+        const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
         const from = Date.now() - FIXTURES_DAYS_BACK * 24 * 60 * 60 * 1000;
-        const to = Date.now() + FIXTURES_DAYS_AHEAD * 24 * 60 * 60 * 1000;
+        const to = Date.now() + CRICKET_FIXTURES_DAYS_AHEAD * 24 * 60 * 60 * 1000;
+
+        // Stage 1: one header call per window day, series deduped by id. A failed
+        // date is skipped rather than failing the sweep - worst case that day's
+        // exclusive series get discovered by a later sweep.
+        const seriesById = new Map();
+        for (let t = from; t <= to; t += 24 * 60 * 60 * 1000) {
+            try {
+                const res = await fetch(`${CRICKET_HEADER_URL}&dates=${fmt(new Date(t))}`);
+                const json = await res.json();
+                for (const league of (json.sports?.[0]?.leagues || [])) {
+                    if (league.id && !seriesById.has(String(league.id))) {
+                        seriesById.set(String(league.id), { id: league.id, name: league.name });
+                    }
+                }
+            } catch (err) {
+                console.error(`   ⚠️ Failed cricket header discovery for ${fmt(new Date(t))}:`, err.message);
+            }
+        }
+        const seriesList = [...seriesById.values()];
+        console.log(`   🔎 Discovered ${seriesList.length} cricket series in window.`);
         const allMatches = [];
 
         for (const series of seriesList) {
