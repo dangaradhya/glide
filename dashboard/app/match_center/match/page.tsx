@@ -311,7 +311,7 @@ export default function MatchDetailPage() {
       <div className="max-w-6xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
         <div className="flex items-center justify-between mb-4">
           <Brand />
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <ThemeToggle />
             <AuthButton />
           </div>

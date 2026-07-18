@@ -709,14 +709,18 @@ function ReelsContent() {
                 data-video-id={reel.video_id}
                 
                 // Added overflow-hidden to the outermost container to trap any bleeding layers from the 120% scaled iframe
-                className="reel-container h-[calc(100dvh_-_var(--app-banner-height))] w-full flex flex-col items-center justify-center snap-center snap-always relative overflow-hidden will-change-transform"
+                // md:pt-24 reserves the band the absolutely-positioned TopTabs row occupies
+                // (top-10 + p-6 ≈ 80px) so the centered video frame can never rise into it
+                className="reel-container h-[calc(100dvh_-_var(--app-banner-height))] w-full flex flex-col items-center justify-center snap-center snap-always relative overflow-hidden will-change-transform md:pt-24 md:pb-6"
                 
                 style={{ transform: 'translateZ(0)' }}
               >
                 {/* The Video Container */}
-                {/* Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl) */}
-                <div 
-                  className="w-full h-full md:max-w-md md:h-[85vh] bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800"
+                {/* Full screen edge-to-edge on Mobile (w-full h-full rounded-none), Framed nicely on Desktop (md:max-w-md md:h-[85vh] md:rounded-xl).
+                    md:max-h-full caps the 85vh frame to the container's padded content box, so on
+                    short viewports it shrinks below the reserved tab band instead of overlapping it */}
+                <div
+                  className="w-full h-full md:max-w-md md:h-[85vh] md:max-h-full bg-black md:rounded-xl overflow-hidden shadow-2xl relative md:border border-gray-300 dark:border-gray-800"
                   // Fallback strict inset path to physically mask the boundaries of the GPU layer
                   style={{ clipPath: 'inset(0)' }}
                 >

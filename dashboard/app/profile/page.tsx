@@ -222,7 +222,7 @@ export default function ProfileVault() {
             <Brand />
           </Link>
           {/* Added ThemeToggle next to the AuthButton */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <ThemeToggle />
             <AuthButton />
           </div>
