@@ -98,7 +98,19 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
         console.error('Error opening database:', err.message);
     } else {
         console.log('Connected to the SQLite database.');
-        
+
+        // WAL journal mode: without it, every write transaction blocks ALL reads until
+        // its fsync completes - and the every-minute live-scores upsert burst was
+        // measured queueing reads for up to 30 SECONDS (p50 7ms, p95 30000ms), which
+        // surfaced to users as random multi-second page loads. With WAL, readers see a
+        // consistent snapshot and never wait on writers. synchronous=NORMAL is the
+        // standard WAL pairing (durable except against OS crash, fine for re-ingestable
+        // scores), and busy_timeout makes any residual contention wait briefly instead
+        // of failing with SQLITE_BUSY. WAL is safe here: single process, local disk.
+        db.run('PRAGMA journal_mode = WAL');
+        db.run('PRAGMA synchronous = NORMAL');
+        db.run('PRAGMA busy_timeout = 5000');
+
         // TABLE 1: Posts (Articles)
         // Once connected, we execute a SQL command to ensure our schema exists.
         // Added the 'url' column as UNIQUE to prevent duplicate AI processing.
@@ -284,7 +296,9 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
             // (e.g. "Nordea Open · Women's Singles" - also how men's/women's draws get
             // separated in the UI) and cricket stores the series name; team sports leave
             // it NULL since the league card itself already names the competition.
-            for (const col of ['home_logo', 'away_logo', 'tournament']) {
+            // series_id (cricket deep coverage): ESPN's cricket summary endpoint is
+            // addressed by series + event, so cricket rows carry their series id.
+            for (const col of ['home_logo', 'away_logo', 'tournament', 'series_id']) {
                 db.run(`ALTER TABLE matches ADD COLUMN ${col} TEXT`, (alterErr) => {
                     if (alterErr && !alterErr.message.includes('duplicate column name')) {
                         console.error(`Error adding matches.${col}:`, alterErr.message);
@@ -1365,8 +1379,8 @@ app.post('/api/matches', verifyScraper, (req, res) => {
     }
 
     const sql = `
-        INSERT INTO matches (league_id, vendor, external_id, home_team, away_team, home_logo, away_logo, home_score, away_score, score_summary, status, start_time, clock, tournament, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO matches (league_id, vendor, external_id, home_team, away_team, home_logo, away_logo, home_score, away_score, score_summary, status, start_time, clock, tournament, series_id, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(vendor, external_id) DO UPDATE SET
             home_team = excluded.home_team,
             away_team = excluded.away_team,
@@ -1379,26 +1393,36 @@ app.post('/api/matches', verifyScraper, (req, res) => {
             start_time = excluded.start_time,
             clock = excluded.clock,
             tournament = excluded.tournament,
+            series_id = excluded.series_id,
             last_updated = CURRENT_TIMESTAMP
     `;
 
     let upserted = 0;
     let failed = 0;
-    matches.forEach((m) => {
-        db.run(sql, [
-            m.league_id, m.vendor, m.external_id, m.home_team, m.away_team,
-            m.home_logo ?? null, m.away_logo ?? null,
-            m.home_score, m.away_score, m.score_summary, m.status, m.start_time, m.clock,
-            m.tournament ?? null,
-        ], (err) => {
-            if (err) { failed++; console.error('Error upserting match:', err.message); }
-            else upserted++;
-
-            // Fire the response once every row has been attempted (order-independent, since
-            // db.run callbacks can complete out of order under sqlite3's internal queueing).
-            if (upserted + failed === matches.length) {
-                res.status(failed > 0 ? 207 : 200).json({ upserted, failed });
+    // One transaction for the whole batch: without it, several hundred rows each pay
+    // their own commit/fsync, and that sustained write burst is what queued reads for
+    // seconds every minute (see the WAL note at db open - the two fixes pair). Inside
+    // db.serialize the statements run in order, so COMMIT's callback fires after every
+    // row has been attempted; per-row errors fail that row only, same as before.
+    db.serialize(() => {
+        db.run('BEGIN IMMEDIATE');
+        matches.forEach((m) => {
+            db.run(sql, [
+                m.league_id, m.vendor, m.external_id, m.home_team, m.away_team,
+                m.home_logo ?? null, m.away_logo ?? null,
+                m.home_score, m.away_score, m.score_summary, m.status, m.start_time, m.clock,
+                m.tournament ?? null, m.series_id ?? null,
+            ], (err) => {
+                if (err) { failed++; console.error('Error upserting match:', err.message); }
+                else upserted++;
+            });
+        });
+        db.run('COMMIT', (commitErr) => {
+            if (commitErr) {
+                console.error('Error committing matches batch:', commitErr.message);
+                return res.status(500).json({ error: 'Failed to commit matches batch' });
             }
+            res.status(failed > 0 ? 207 : 200).json({ upserted, failed });
         });
     });
 });
@@ -1478,6 +1502,81 @@ app.get('/api/matches/:id', (req, res) => {
 const matchSummaryCache = new Map(); // match id -> { expiresAt, status, body }
 const SUMMARY_CACHE_MS = 60 * 1000;
 
+// Build a full cricket scorecard from ESPN's cricket summary. The complete per-player
+// figures live in rosters[].roster[].linescores (one entry per innings/period):
+// batting (runs, ballsFaced, fours, sixes, strikeRate, battingPosition, dismissalCard)
+// and bowling (overs, maidens, conceded, wickets, economyRate), flagged by the
+// batted/bowled stats. Innings totals come from the header competitors' per-period
+// linescores ("279/4 (96 ov)"). Field names verified against a live Youth Test.
+function buildCricketInnings(summary) {
+    const byPeriod = new Map();
+    const inningsFor = (period) => {
+        if (!byPeriod.has(period)) {
+            byPeriod.set(period, { period, battingTeam: null, total: null, batting: [], bowling: [] });
+        }
+        return byPeriod.get(period);
+    };
+
+    for (const roster of (summary.rosters || [])) {
+        const teamName = roster.team?.displayName || null;
+        for (const player of (roster.roster || [])) {
+            const name = player.athlete?.shortName || player.athlete?.displayName || null;
+            if (!name) continue;
+            for (const periodEntry of (player.linescores || [])) {
+                for (const line of (periodEntry.linescores || [])) {
+                    const stats = {};
+                    for (const cat of (line.statistics?.categories || [])) {
+                        for (const s of (cat.stats || [])) stats[s.name] = s.displayValue ?? String(s.value ?? '');
+                    }
+                    const inn = inningsFor(periodEntry.period);
+                    if (Number(stats.batted) > 0) {
+                        inn.battingTeam = inn.battingTeam || teamName;
+                        inn.batting.push({
+                            name,
+                            position: Number(stats.battingPosition) || 99,
+                            runs: stats.runs ?? '',
+                            balls: stats.ballsFaced ?? '',
+                            fours: stats.fours ?? '0',
+                            sixes: stats.sixes ?? '0',
+                            strikeRate: stats.strikeRate ?? '',
+                            dismissal: stats.dismissalCard || '',
+                        });
+                    }
+                    if (Number(stats.bowled) > 0) {
+                        inn.bowling.push({
+                            name,
+                            overs: stats.overs ?? '',
+                            maidens: stats.maidens ?? '0',
+                            runs: stats.conceded ?? '',
+                            wickets: stats.wickets ?? '0',
+                            economy: stats.economyRate ?? '',
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Innings totals: each competitor's per-period linescore carries the batting
+    // side's display total for the periods it batted in
+    for (const comp of (summary.header?.competitions?.[0]?.competitors || [])) {
+        for (const ls of (comp.linescores || [])) {
+            const inn = byPeriod.get(ls.period);
+            if (inn && (ls.isBatting || Number(ls.runs) > 0)) {
+                const total = ls.score || (ls.runs != null ? `${ls.runs}/${ls.wickets ?? 0}` : null);
+                if (total && comp.team?.displayName === inn.battingTeam) inn.total = total;
+                else if (total && !inn.total) inn.total = total;
+            }
+        }
+    }
+
+    const innings = [...byPeriod.values()]
+        .filter((inn) => inn.batting.length > 0 || inn.bowling.length > 0)
+        .sort((a, b) => a.period - b.period);
+    for (const inn of innings) inn.batting.sort((a, b) => a.position - b.position);
+    return innings;
+}
+
 app.get('/api/matches/:id/summary', (req, res) => {
     const cached = matchSummaryCache.get(req.params.id);
     if (cached && cached.expiresAt > Date.now()) {
@@ -1497,6 +1596,32 @@ app.get('/api/matches/:id/summary', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!row) return respond(404, { error: 'Match not found' });
         if (row.vendor !== 'espn') return respond(404, { error: 'No box score available for this match' });
+
+        // Cricket: full scorecard from the series-addressed summary endpoint. The
+        // series id was stored at ingestion, so this works even after the series
+        // rotates out of ESPN's header feed.
+        if (row.league_id === 'cricket') {
+            if (!row.series_id || !String(row.external_id).startsWith('cricket-')) {
+                return respond(404, { error: 'No scorecard available for this match' });
+            }
+            const eventId = String(row.external_id).slice('cricket-'.length);
+            try {
+                const url = `https://site.api.espn.com/apis/site/v2/sports/cricket/${encodeURIComponent(row.series_id)}/summary?event=${encodeURIComponent(eventId)}`;
+                const espnRes = await fetch(url);
+                if (!espnRes.ok) return respond(404, { error: 'No scorecard available for this match' });
+                const summary = await espnRes.json();
+                const innings = buildCricketInnings(summary);
+                if (innings.length === 0) return respond(404, { error: 'No scorecard available for this match' });
+                return respond(200, {
+                    innings,
+                    venue: summary.gameInfo?.venue?.fullName || null,
+                    attendance: summary.gameInfo?.attendance || null,
+                });
+            } catch (fetchErr) {
+                console.error('Error fetching cricket scorecard:', fetchErr.message);
+                return respond(404, { error: 'No scorecard available for this match' });
+            }
+        }
 
         const league = ESPN_LEAGUES.find((l) => l.league_id === row.league_id);
         if (!league || league.sport === 'tennis') {

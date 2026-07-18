@@ -153,39 +153,87 @@ async function fetchEspnLeague({ league_id, sport, slug }, dateRange) {
 // series name (league.name) goes in `tournament`, prefixed with the match title when
 // ESPN provides one ("2nd Youth Test"). `summary` ("Stumps", "Lunch", ...) is the
 // closest thing cricket has to a live clock, so it rides in `clock`.
-async function fetchCricket() {
-    const url = 'https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket';
-    const res = await fetch(url);
-    const json = await res.json();
+const CRICKET_HEADER_URL = 'https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket';
+const cricketSeriesScoreboardUrl = (seriesId, date) =>
+    `https://site.web.api.espn.com/apis/site/v2/sports/cricket/${seriesId}/scoreboard${date ? `?dates=${date}` : ''}`;
 
+// A multi-week series' calendar can hold dozens of match days; the in-window slice is
+// additionally capped so one T20 league can't turn the hourly sweep into a request storm.
+const CRICKET_MAX_DATES_PER_SERIES = 12;
+
+function normalizeCricketHeaderEvent(event, league) {
+    const home = (event.competitors || []).find((c) => c.homeAway === 'home');
+    const away = (event.competitors || []).find((c) => c.homeAway === 'away');
+    const status = normalizeEspnStatus(event.status);
+
+    const scoreSummary = [home?.score, away?.score]
+        .filter((s) => s && String(s).trim() !== '')
+        .join(' · ') || null;
+
+    return {
+        league_id: 'cricket',
+        vendor: 'espn',
+        external_id: `cricket-${event.id}`,
+        // The scorecard summary endpoint is addressed by series + event; the series id
+        // is stored so match detail keeps working even after a finished series rotates
+        // out of the header feed (a request-time header lookup couldn't find it then)
+        series_id: String(league.id),
+        home_team: home?.displayName || home?.name || null,
+        away_team: away?.displayName || away?.name || null,
+        home_logo: null,
+        away_logo: null,
+        home_score: null,
+        away_score: null,
+        score_summary: scoreSummary,
+        status,
+        start_time: event.date || null,
+        clock: status === 'live' ? (event.summary || null) : null,
+        tournament: [event.title, league.name].filter(Boolean).join(' · ') || null,
+    };
+}
+
+// The per-series scoreboard uses the standard scoreboard shape (competitions[0]
+// .competitors[].team) - unlike the header feed - but cricket scores are still
+// display strings ("220 & 340 (97 ov, target 386)"), never two integers.
+function normalizeCricketScoreboardEvent(event, series) {
+    const comp = event.competitions[0];
+    const home = comp.competitors.find((c) => c.homeAway === 'home');
+    const away = comp.competitors.find((c) => c.homeAway === 'away');
+    const status = normalizeEspnStatus(comp.status.type.state);
+
+    const scoreSummary = [home?.score, away?.score]
+        .filter((s) => s && String(s).trim() !== '')
+        .join(' · ') || null;
+
+    // event.description reads "2nd Youth Test, <series> at <venue>, Jul 17-20 2026" -
+    // its leading segment is the same short title the header feed calls `title`
+    const title = (event.description || '').split(',')[0].trim() || null;
+
+    return {
+        league_id: 'cricket',
+        vendor: 'espn',
+        external_id: `cricket-${event.id}`,
+        series_id: String(series.id),
+        home_team: home?.team?.displayName || null,
+        away_team: away?.team?.displayName || null,
+        home_logo: null,
+        away_logo: null,
+        home_score: null,
+        away_score: null,
+        score_summary: status === 'scheduled' ? null : scoreSummary,
+        status,
+        start_time: event.date,
+        clock: status === 'live' ? comp.status.type.shortDetail : null,
+        tournament: [title, series.name].filter(Boolean).join(' · ') || null,
+    };
+}
+
+async function fetchCricket() {
+    const res = await fetch(CRICKET_HEADER_URL);
+    const json = await res.json();
     const leagues = json.sports?.[0]?.leagues || [];
     return leagues.flatMap((league) =>
-        (league.events || []).map((event) => {
-            const home = (event.competitors || []).find((c) => c.homeAway === 'home');
-            const away = (event.competitors || []).find((c) => c.homeAway === 'away');
-            const status = normalizeEspnStatus(event.status);
-
-            const scoreSummary = [home?.score, away?.score]
-                .filter((s) => s && String(s).trim() !== '')
-                .join(' · ') || null;
-
-            return {
-                league_id: 'cricket',
-                vendor: 'espn',
-                external_id: `cricket-${event.id}`,
-                home_team: home?.displayName || home?.name || null,
-                away_team: away?.displayName || away?.name || null,
-                home_logo: null,
-                away_logo: null,
-                home_score: null,
-                away_score: null,
-                score_summary: scoreSummary,
-                status,
-                start_time: event.date || null,
-                clock: status === 'live' ? (event.summary || null) : null,
-                tournament: [event.title, league.name].filter(Boolean).join(' · ') || null,
-            };
-        })
+        (league.events || []).map((event) => normalizeCricketHeaderEvent(event, league))
     );
 }
 
@@ -254,6 +302,62 @@ async function runEspnFixturesCycle() {
     console.log('🏁 ESPN fixtures sweep complete!');
 }
 
+// Hourly cricket fixtures sweep - cricket's version of runEspnFixturesCycle, so
+// cricket cards get "last matchday + upcoming" day sections like team sports do.
+// The header feed only carries today-ish matches (finished ones vanish within hours),
+// but each active series' bare scoreboard exposes a calendar of its match days, and
+// single-date queries return finished matches with full scores plus future fixtures
+// (the ?dates=A-B range form 404s for cricket, so days are fetched individually).
+// Only calendar days inside the same -7/+21 day window as the team-sport sweep are
+// requested, so stale or far-future matches never enter the DB at all. Limitation:
+// a series that fully ended before ever appearing here is undiscoverable (its id
+// left the header feed) - coverage is forward-looking from first sighting.
+async function runCricketFixturesCycle() {
+    console.log('🏏📅 Starting cricket fixtures sweep...');
+    try {
+        const headerRes = await fetch(CRICKET_HEADER_URL);
+        const headerJson = await headerRes.json();
+        const seriesList = (headerJson.sports?.[0]?.leagues || [])
+            .map((l) => ({ id: l.id, name: l.name }))
+            .filter((s) => s.id);
+
+        const from = Date.now() - FIXTURES_DAYS_BACK * 24 * 60 * 60 * 1000;
+        const to = Date.now() + FIXTURES_DAYS_AHEAD * 24 * 60 * 60 * 1000;
+        const allMatches = [];
+
+        for (const series of seriesList) {
+            try {
+                const baseRes = await fetch(cricketSeriesScoreboardUrl(series.id));
+                const baseJson = await baseRes.json();
+                const dates = (baseJson.leagues?.[0]?.calendar || [])
+                    .map((d) => new Date(d))
+                    .filter((d) => !isNaN(d.getTime()) && d.getTime() >= from && d.getTime() <= to)
+                    .slice(0, CRICKET_MAX_DATES_PER_SERIES)
+                    .map((d) => d.toISOString().slice(0, 10).replace(/-/g, ''));
+
+                for (const date of dates) {
+                    const res = await fetch(cricketSeriesScoreboardUrl(series.id, date));
+                    const json = await res.json();
+                    for (const event of (json.events || [])) {
+                        allMatches.push(normalizeCricketScoreboardEvent(event, series));
+                    }
+                }
+            } catch (err) {
+                console.error(`   ⚠️ Failed cricket series ${series.id} sweep:`, err.message);
+            }
+        }
+
+        // Multi-day Tests appear on every one of their calendar days - dedupe the batch
+        // so the upsert isn't hammered with identical rows
+        const seen = new Set();
+        const deduped = allMatches.filter((m) => !seen.has(m.external_id) && seen.add(m.external_id));
+        await postMatchesBatch(deduped, 'Cricket fixtures');
+    } catch (err) {
+        console.error('   ⚠️ Failed cricket fixtures sweep:', err.message);
+    }
+    console.log('🏁 Cricket fixtures sweep complete!');
+}
+
 async function runCricketCycle() {
     console.log('🏏 Starting cricket live scores cycle...');
     try {
@@ -274,6 +378,9 @@ async function runCricketCycle() {
 runEspnCycle();
 runEspnFixturesCycle();
 runCricketCycle();
+runCricketFixturesCycle();
 cron.schedule('* * * * *', runEspnCycle);
 cron.schedule('7 * * * *', runEspnFixturesCycle);
 cron.schedule('*/5 * * * *', runCricketCycle);
+// Offset from the team-sport fixtures sweep so the two never stack on one tick
+cron.schedule('23 * * * *', runCricketFixturesCycle);
