@@ -21,15 +21,47 @@ import { AVAILABLE_LEAGUES, Match, parseUtc, dayLabel } from '@/lib/leagues';
 // Shape of GET /api/matches/:id/summary (see server/index.js): ESPN's per-event box
 // score, already normalized server-side. 404s for cricket/tennis and for anything
 // ESPN has no summary for - the page then renders the hero alone.
+interface CricketBatting {
+  name: string; position: number; runs: string; balls: string;
+  fours: string; sixes: string; strikeRate: string; dismissal: string;
+}
+interface CricketBowling {
+  name: string; overs: string; maidens: string; runs: string; wickets: string; economy: string;
+}
+interface CricketInningsData {
+  period: number;
+  battingTeam: string | null;
+  total: string | null;
+  batting: CricketBatting[];
+  bowling: CricketBowling[];
+}
+
+// Cricket responses carry ONLY { innings, venue, attendance } - no home/away/stats -
+// so the team-sport fields are optional and every consumer guards on presence.
 interface MatchSummary {
-  home: { linescores: string[]; record: string | null };
-  away: { linescores: string[]; record: string | null };
-  stats: { label: string; home: string; away: string }[];
+  home?: { linescores: string[]; record: string | null };
+  away?: { linescores: string[]; record: string | null };
+  stats?: { label: string; home: string; away: string }[];
   // Soccer only - other sports omit the field entirely
   scorers?: { name: string; minute: string; team: 'home' | 'away'; penalty: boolean; ownGoal: boolean }[];
+  // Cricket only - the full scorecard
+  innings?: CricketInningsData[];
   venue: string | null;
   attendance: number | null;
 }
+
+// The scorecard endpoint only carries dismissal shorthand ('c', 'b', 'not out') -
+// expand the known codes to readable words, pass anything unrecognized through.
+const DISMISSAL_LABELS: Record<string, string> = {
+  c: 'caught', b: 'bowled', lbw: 'lbw', st: 'stumped', 'run out': 'run out', 'not out': 'not out',
+};
+const dismissalLabel = (code: string) => DISMISSAL_LABELS[code] ?? code;
+
+const ordinal = (n: number) => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+};
 
 const DETAIL_POLL_INTERVAL_MS = 30 * 1000;
 
@@ -79,6 +111,84 @@ function StatRow({ stat }: { stat: { label: string; home: string; away: string }
           <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
             <div className="h-1 rounded-full bg-purple-500" style={{ width: `${100 - homePct}%` }}></div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One cricket innings: header band with team + total, then the batting card and
+// bowling figures. Tables scroll horizontally inside their own container on
+// narrow screens rather than widening the page.
+function InningsCard({ innings }: { innings: CricketInningsData }) {
+  return (
+    <div className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+      <div className="px-4 py-2 bg-gray-50 dark:bg-gray-950/40 flex items-center justify-between gap-3">
+        <span className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 truncate">
+          {ordinal(innings.period)} innings{innings.battingTeam ? ` · ${innings.battingTeam}` : ''}
+        </span>
+        {innings.total && (
+          <span className="text-sm font-bold tabular-nums text-gray-900 dark:text-white shrink-0">{innings.total}</span>
+        )}
+      </div>
+
+      {innings.batting.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px] min-w-[430px]">
+            <thead>
+              <tr className="font-display font-stretch-[72%] text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                <th className="text-left font-bold px-4 py-2">Batter</th>
+                <th className="text-left font-bold px-2 py-2"></th>
+                <th className="font-bold px-2 py-2 text-right w-10">R</th>
+                <th className="font-bold px-2 py-2 text-right w-10">B</th>
+                <th className="font-bold px-2 py-2 text-right w-9">4s</th>
+                <th className="font-bold px-2 py-2 text-right w-9">6s</th>
+                <th className="font-bold px-4 py-2 text-right w-14">SR</th>
+              </tr>
+            </thead>
+            <tbody className="tabular-nums">
+              {innings.batting.map((b, i) => (
+                <tr key={i} className="border-t border-gray-50 dark:border-gray-800/60">
+                  <td className="px-4 py-1.5 font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">{b.name}</td>
+                  <td className="px-2 py-1.5 text-gray-400 dark:text-gray-500 text-xs whitespace-nowrap">{dismissalLabel(b.dismissal)}</td>
+                  <td className="px-2 py-1.5 text-right font-bold text-gray-900 dark:text-white">{b.runs}</td>
+                  <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">{b.balls}</td>
+                  <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">{b.fours}</td>
+                  <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">{b.sixes}</td>
+                  <td className="px-4 py-1.5 text-right text-gray-600 dark:text-gray-300">{b.strikeRate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {innings.bowling.length > 0 && (
+        <div className="overflow-x-auto border-t border-gray-100 dark:border-gray-800">
+          <table className="w-full text-[13px] min-w-[380px]">
+            <thead>
+              <tr className="font-display font-stretch-[72%] text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                <th className="text-left font-bold px-4 py-2">Bowler</th>
+                <th className="font-bold px-2 py-2 text-right w-10">O</th>
+                <th className="font-bold px-2 py-2 text-right w-9">M</th>
+                <th className="font-bold px-2 py-2 text-right w-10">R</th>
+                <th className="font-bold px-2 py-2 text-right w-9">W</th>
+                <th className="font-bold px-4 py-2 text-right w-14">Econ</th>
+              </tr>
+            </thead>
+            <tbody className="tabular-nums">
+              {innings.bowling.map((bw, i) => (
+                <tr key={i} className="border-t border-gray-50 dark:border-gray-800/60">
+                  <td className="px-4 py-1.5 font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">{bw.name}</td>
+                  <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">{bw.overs}</td>
+                  <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">{bw.maidens}</td>
+                  <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">{bw.runs}</td>
+                  <td className="px-2 py-1.5 text-right font-bold text-gray-900 dark:text-white">{bw.wickets}</td>
+                  <td className="px-4 py-1.5 text-right text-gray-600 dark:text-gray-300">{bw.economy}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -171,7 +281,7 @@ function MatchDetail() {
     ? ''
     : `${dayLabel(start)} · ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 
-  const linescoreCols = Math.max(summary?.home.linescores.length ?? 0, summary?.away.linescores.length ?? 0);
+  const linescoreCols = Math.max(summary?.home?.linescores?.length ?? 0, summary?.away?.linescores?.length ?? 0);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -239,20 +349,22 @@ function MatchDetail() {
                   )}
                 </div>
 
-                {/* Set-by-set / innings scoreline for sports without two-integer scores */}
+                {/* Set-by-set / innings scoreline for sports without two-integer scores.
+                    Constrained + wrapping: cricket's multi-innings lines ("220 & 340
+                    (97 ov, target 386) · 295 & 310") otherwise overflow into the badges */}
                 {!hasScores && match.status !== 'scheduled' && match.score_summary && (
-                  <span className="mt-1.5 text-sm tabular-nums text-white/90">{match.score_summary}</span>
+                  <span className="mt-1.5 text-sm tabular-nums text-white/90 text-center break-words max-w-36 md:max-w-xs">{match.score_summary}</span>
                 )}
               </div>
 
               <TeamBadge src={match.away_logo} name={match.away_team} />
             </div>
 
-            {(summary?.home.record || summary?.away.record) && (
+            {(summary?.home?.record || summary?.away?.record) && (
               <div className="flex justify-between mt-2 text-[11px] tabular-nums text-white/70">
-                <span className="flex-1 text-center">{summary?.home.record}</span>
+                <span className="flex-1 text-center">{summary?.home?.record}</span>
                 <span className="shrink-0 w-24"></span>
-                <span className="flex-1 text-center">{summary?.away.record}</span>
+                <span className="flex-1 text-center">{summary?.away?.record}</span>
               </div>
             )}
 
@@ -288,6 +400,15 @@ function MatchDetail() {
           </div>
         )}
 
+        {/* Cricket scorecard: innings-by-innings batting and bowling cards */}
+        {summary?.innings && summary.innings.length > 0 && (
+          <div>
+            {summary.innings.map(inn => (
+              <InningsCard key={inn.period} innings={inn} />
+            ))}
+          </div>
+        )}
+
         {/* Linescore: per-period/inning/half breakdown when the box score has one */}
         {summary && linescoreCols > 0 && (
           <div className="border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
@@ -303,8 +424,8 @@ function MatchDetail() {
               </thead>
               <tbody className="tabular-nums">
                 {([
-                  { name: match.home_team, scores: summary.home.linescores, total: match.home_score },
-                  { name: match.away_team, scores: summary.away.linescores, total: match.away_score },
+                  { name: match.home_team, scores: summary.home?.linescores ?? [], total: match.home_score },
+                  { name: match.away_team, scores: summary.away?.linescores ?? [], total: match.away_score },
                 ]).map((team, idx) => (
                   <tr key={idx} className={idx === 0 ? 'border-b border-gray-50 dark:border-gray-800/60' : ''}>
                     <td className="px-4 py-2 font-semibold text-gray-800 dark:text-gray-100 truncate max-w-32">{team.name}</td>
@@ -324,7 +445,7 @@ function MatchDetail() {
         )}
 
         {/* Team stat comparisons (possession, shots, fouls, ...) when available */}
-        {summary && summary.stats.length > 0 && (
+        {summary?.stats && summary.stats.length > 0 && (
           <div className="divide-y divide-gray-50 dark:divide-gray-800/60 py-1">
             {summary.stats.map(stat => (
               <StatRow key={stat.label} stat={stat} />
