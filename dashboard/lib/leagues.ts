@@ -56,6 +56,10 @@ export interface Match {
   status: string;
   start_time: string;
   clock: string | null;
+  // Tennis: "Tournament · Draw" (e.g. "Nordea Open · Women's Singles"); cricket:
+  // "match title · series name". NULL for team sports, whose league card already
+  // names the competition.
+  tournament: string | null;
   last_updated: string;
 }
 
