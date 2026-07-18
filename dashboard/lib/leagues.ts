@@ -23,6 +23,7 @@ export const AVAILABLE_LEAGUES: League[] = [
   { id: 'nhl', name: 'NHL', category: 'Hockey', url: 'https://www.espn.com/nhl/scoreboard', color: 'from-cyan-400 to-blue-600' },
   { id: 'cricket', name: 'Intl Cricket', category: 'Cricket', url: 'https://www.espncricinfo.com/live-cricket-match-results', color: 'from-emerald-400 to-teal-600' },
   { id: 'atp', name: "Tennis", category: 'Tennis', url: 'https://www.sofascore.com/tennis', color: 'from-lime-400 to-green-600' },
+  { id: 'golf', name: 'Golf', category: 'Golf', url: 'https://www.espn.com/golf/leaderboard', color: 'from-green-600 to-emerald-900' },
   { id: 'ufc', name: 'UFC', category: 'MMA', url: 'https://www.espn.com/mma/schedule', color: 'from-red-600 to-red-900' },
   { id: 'f1', name: 'Formula 1', category: 'Motorsport', url: 'https://www.formula1.com/en/racing/2026.html', color: 'from-red-500 to-rose-700' },
   { id: 'premier_league', name: 'Premier League', category: 'Football', url: 'https://www.fotmob.com/leagues/47/overview/premier-league', color: 'from-purple-500 to-indigo-600' },

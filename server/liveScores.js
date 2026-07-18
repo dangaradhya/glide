@@ -120,6 +120,56 @@ function normalizeEspnTennisMatch(match, league_id, tournament) {
     };
 }
 
+// A golf "event" is a whole multi-day tournament: 100+ athletes on one leaderboard,
+// no home/away at all. It maps onto the matches schema as one ROW PER TOURNAMENT:
+// home_team carries the tournament name (away stays null), score_summary carries the
+// leader/winner line, clock carries ESPN's round status ("Round 3 - In Progress"),
+// and tournament carries the tour name so both tours share the one Golf card the way
+// ATP/WTA share the Tennis card. The full leaderboard is deliberately not stored -
+// the detail page pulls it live through /api/matches/:id/summary, which re-fetches
+// the tour scoreboard by date (the per-event summary endpoint 500s server-side on
+// ESPN's end, so the scoreboard IS the leaderboard source - verified it keeps full
+// fields for finished events too). series_id stores the tour slug for that lookup.
+// Scheduled tournaments list zero competitors on both tours until near start, so a
+// scheduled row simply has no leader line - correct display anyway.
+const GOLF_TOUR_LABELS = { pga: 'PGA Tour', liv: 'LIV Golf' };
+
+function normalizeEspnGolfEvent(event, league_id, slug) {
+    const comp = event.competitions?.[0] || {};
+    const statusType = comp.status?.type || event.status?.type || {};
+    const status = normalizeEspnStatus(statusType.state);
+
+    // Competitor order IS the leaderboard position (1 = leader)
+    const leader = (comp.competitors || []).reduce(
+        (best, c) => (best === null || (c.order ?? Infinity) < (best.order ?? Infinity) ? c : best),
+        null
+    );
+    const leaderName = leader?.athlete?.shortName || leader?.athlete?.displayName || null;
+    const leaderLine = leaderName && leader?.score != null
+        ? `${status === 'final' ? 'Winner' : 'Leader'}: ${leaderName} ${leader.score}`
+        : null;
+
+    return {
+        league_id,
+        vendor: 'espn',
+        external_id: `golf-${event.id}`,
+        series_id: slug,
+        home_team: event.shortName || event.name || null,
+        away_team: null,
+        home_logo: null,
+        away_logo: null,
+        home_score: null,
+        away_score: null,
+        score_summary: status === 'scheduled' ? null : leaderLine,
+        status,
+        // "Round 3 - In Progress" style detail only exists on the competition status;
+        // shown while live the same way cricket rides "Stumps"/"Lunch" in clock.
+        clock: status === 'live' ? (statusType.detail || statusType.shortDetail || null) : null,
+        start_time: event.date,
+        tournament: GOLF_TOUR_LABELS[slug] || 'Golf',
+    };
+}
+
 // dateRange (optional, "YYYYMMDD-YYYYMMDD") widens the fetch from "today's scoreboard"
 // to a whole window - used by the hourly fixtures sweep. Omitted for the every-minute
 // live cycle, where today's default response is exactly what's wanted.
@@ -128,6 +178,10 @@ async function fetchEspnLeague({ league_id, sport, slug }, dateRange) {
     const res = await fetch(url);
     const json = await res.json();
     const events = json.events || [];
+
+    if (sport === 'golf') {
+        return events.map((event) => normalizeEspnGolfEvent(event, league_id, slug));
+    }
 
     if (sport === 'tennis') {
         // A tennis "event" is a whole tournament; the draw name (Men's Singles /

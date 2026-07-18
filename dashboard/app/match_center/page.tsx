@@ -138,28 +138,55 @@ function MatchRow({ match }: { match: Match }) {
   const dimmedIfLost = (won: boolean) =>
     isFinal && hasScores && !won ? 'opacity-50' : '';
 
+  const statusHeader = (
+    <div className="flex items-center gap-1.5 mb-1.5">
+      {isLive ? (
+        <>
+          <span className="relative flex h-2 w-2" aria-hidden="true">
+            <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+          </span>
+          <span className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+            Live{match.clock ? ` · ${match.clock}` : ''}
+          </span>
+        </>
+      ) : (
+        <span className="font-display font-stretch-[72%] text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+          {/* Golf start_times are date-only placeholders from ESPN (a fake-precise
+              "0:00" would render), and the day header already carries the date */}
+          {isFinal ? 'Final' : match.away_team == null ? 'Upcoming' : formatKickoffTime(match.start_time)}
+        </span>
+      )}
+    </div>
+  );
+
+  // Golf: one row = one whole tournament (away_team is null by design), so there's
+  // a single title line and the leader/winner line instead of a two-team layout.
+  if (match.away_team == null) {
+    return (
+      <Link
+        href={`/match_center/match?id=${match.id}`}
+        className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+      >
+        {statusHeader}
+        <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate block">
+          {match.home_team}
+        </span>
+        {match.status !== 'scheduled' && match.score_summary && (
+          <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400 mt-1.5 truncate">
+            {match.score_summary}
+          </p>
+        )}
+      </Link>
+    );
+  }
+
   return (
     <Link
       href={`/match_center/match?id=${match.id}`}
       className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
     >
-      <div className="flex items-center gap-1.5 mb-1.5">
-        {isLive ? (
-          <>
-            <span className="relative flex h-2 w-2" aria-hidden="true">
-              <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-            </span>
-            <span className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
-              Live{match.clock ? ` · ${match.clock}` : ''}
-            </span>
-          </>
-        ) : (
-          <span className="font-display font-stretch-[72%] text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            {isFinal ? 'Final' : formatKickoffTime(match.start_time)}
-          </span>
-        )}
-      </div>
+      {statusHeader}
 
       <div className="space-y-1">
         <div className={`flex items-center justify-between gap-3 ${dimmedIfLost(homeWon)}`}>
@@ -492,11 +519,12 @@ export default function LiveUpdatesPage() {
 
   // Group match rows by league. Rows without both team names (ESPN emits these for
   // TBD/doubles tennis slots) can't be rendered and are dropped here rather than
-  // special-cased everywhere below.
+  // special-cased everywhere below. Golf is the exception: its rows are one-per-
+  // tournament with only home_team (the tournament name) filled, by design.
   const matchesByLeague = useMemo(() => {
     const grouped = new Map<string, Match[]>();
     for (const match of matches) {
-      if (!match.home_team || !match.away_team) continue;
+      if (!match.home_team || (!match.away_team && match.league_id !== 'golf')) continue;
       const list = grouped.get(match.league_id);
       if (list) list.push(match);
       else grouped.set(match.league_id, [match]);

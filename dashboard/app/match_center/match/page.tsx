@@ -38,6 +38,16 @@ interface CricketInningsData {
 
 // Cricket responses carry ONLY { innings, venue, attendance } - no home/away/stats -
 // so the team-sport fields are optional and every consumer guards on presence.
+// Golf responses carry ONLY { leaderboard, round }.
+interface GolfLeaderboardRow {
+  position: number | null;
+  name: string | null;
+  flag: string | null;
+  // Score-to-par display string ("-8", "E", "+2")
+  score: string | null;
+  // Strokes per completed round
+  rounds: string[];
+}
 interface MatchSummary {
   home?: { linescores: string[]; record: string | null };
   away?: { linescores: string[]; record: string | null };
@@ -46,8 +56,11 @@ interface MatchSummary {
   scorers?: { name: string; minute: string; team: 'home' | 'away'; penalty: boolean; ownGoal: boolean }[];
   // Cricket only - the full scorecard
   innings?: CricketInningsData[];
-  venue: string | null;
-  attendance: number | null;
+  // Golf only - the tournament leaderboard + ESPN's round status line
+  leaderboard?: GolfLeaderboardRow[];
+  round?: string | null;
+  venue?: string | null;
+  attendance?: number | null;
 }
 
 // The scorecard endpoint only carries dismissal shorthand ('c', 'b', 'not out') -
@@ -195,6 +208,76 @@ function InningsCard({ innings }: { innings: CricketInningsData }) {
   );
 }
 
+// Golf leaderboard: position, player (with country flag), strokes per round,
+// score to par. Top 20 collapsed - a full field is 150+ players - with the same
+// horizontal-scroll containment as the cricket tables. Under-par totals get golf's
+// conventional red.
+const GOLF_COLLAPSED_ROWS = 20;
+function GolfLeaderboard({ leaderboard, round }: { leaderboard: GolfLeaderboardRow[]; round?: string | null }) {
+  const [expanded, setExpanded] = useState(false);
+  const rows = expanded ? leaderboard : leaderboard.slice(0, GOLF_COLLAPSED_ROWS);
+  const roundCols = leaderboard.reduce((n, r) => Math.max(n, r.rounds.length), 0);
+
+  return (
+    <div className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+      <div className="px-4 py-2 bg-gray-50 dark:bg-gray-950/40 flex items-center justify-between gap-3">
+        <span className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+          Leaderboard
+        </span>
+        {round && (
+          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 truncate">{round}</span>
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px] min-w-[360px]">
+          <thead>
+            <tr className="font-display font-stretch-[72%] text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <th className="text-left font-bold px-4 py-2 w-10">Pos</th>
+              <th className="text-left font-bold px-2 py-2">Player</th>
+              {Array.from({ length: roundCols }, (_, i) => (
+                <th key={i} className="font-bold px-2 py-2 text-right w-10">R{i + 1}</th>
+              ))}
+              <th className="font-bold px-4 py-2 text-right w-14">Total</th>
+            </tr>
+          </thead>
+          <tbody className="tabular-nums">
+            {rows.map((p, i) => (
+              <tr key={i} className="border-t border-gray-50 dark:border-gray-800/60">
+                <td className="px-4 py-1.5 text-gray-500 dark:text-gray-400">{p.position ?? '-'}</td>
+                <td className="px-2 py-1.5 font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
+                  {p.flag && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.flag} alt="" className="inline-block w-4 h-3 object-cover rounded-[2px] mr-1.5 align-[-1px]" loading="lazy" />
+                  )}
+                  {p.name}
+                </td>
+                {Array.from({ length: roundCols }, (_, ri) => (
+                  <td key={ri} className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">
+                    {p.rounds[ri] ?? '-'}
+                  </td>
+                ))}
+                <td className={`px-4 py-1.5 text-right font-bold ${p.score?.startsWith('-') ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                  {p.score ?? '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {leaderboard.length > GOLF_COLLAPSED_ROWS && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="w-full px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 transition-colors"
+        >
+          {expanded ? `Show top ${GOLF_COLLAPSED_ROWS}` : `Show all ${leaderboard.length} players`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function MatchDetail() {
   const searchParams = useSearchParams();
   const matchId = searchParams.get('id');
@@ -277,8 +360,12 @@ function MatchDetail() {
   const isFinal = match.status === 'final';
   const hasScores = match.status !== 'scheduled' && match.home_score != null && match.away_score != null;
   const start = parseUtc(match.start_time);
+  // Golf start_times are date-only placeholders from ESPN - appending the
+  // clock time would render a fake-precise midnight
   const startLabel = isNaN(start.getTime())
     ? ''
+    : match.away_team == null
+    ? dayLabel(start)
     : `${dayLabel(start)} · ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 
   const linescoreCols = Math.max(summary?.home?.linescores?.length ?? 0, summary?.away?.linescores?.length ?? 0);
@@ -319,6 +406,36 @@ function MatchDetail() {
               )}
             </div>
 
+            {/* Golf: one row = one whole tournament (away_team null by design), so
+                the hero is the tournament title + round status + leader line rather
+                than a two-sided matchup. */}
+            {match.away_team == null ? (
+              <div className="flex flex-col items-center pt-1 text-center">
+                <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight max-w-xl">
+                  {match.home_team}
+                </h1>
+                <div className="mt-3 flex items-center gap-1.5">
+                  {isLive ? (
+                    <>
+                      <span className="relative flex h-2 w-2" aria-hidden="true">
+                        <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-red-300 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400"></span>
+                      </span>
+                      <span className="font-display font-stretch-[72%] text-xs font-bold uppercase tracking-wider text-white">
+                        Live{match.clock ? ` · ${match.clock}` : ''}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="font-display font-stretch-[72%] text-xs font-semibold uppercase tracking-wider text-white/80">
+                      {isFinal ? 'Final' : startLabel}
+                    </span>
+                  )}
+                </div>
+                {match.status !== 'scheduled' && match.score_summary && (
+                  <span className="mt-1.5 text-sm tabular-nums text-white/90">{match.score_summary}</span>
+                )}
+              </div>
+            ) : (
             <div className="flex items-start justify-between gap-2 md:gap-6">
               <TeamBadge src={match.home_logo} name={match.home_team} />
 
@@ -359,6 +476,7 @@ function MatchDetail() {
 
               <TeamBadge src={match.away_logo} name={match.away_team} />
             </div>
+            )}
 
             {(summary?.home?.record || summary?.away?.record) && (
               <div className="flex justify-between mt-2 text-[11px] tabular-nums text-white/70">
@@ -407,6 +525,11 @@ function MatchDetail() {
               <InningsCard key={inn.period} innings={inn} />
             ))}
           </div>
+        )}
+
+        {/* Golf leaderboard: the whole point of a golf detail page */}
+        {summary?.leaderboard && summary.leaderboard.length > 0 && (
+          <GolfLeaderboard leaderboard={summary.leaderboard} round={summary.round} />
         )}
 
         {/* Linescore: per-period/inning/half breakdown when the box score has one */}

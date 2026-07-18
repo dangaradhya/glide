@@ -721,6 +721,7 @@ const LEAGUE_TO_SPORT_CATEGORIES = {
     nations_league: ['Football'],
     mls: ['Football'],
     championship: ['Football'],
+    golf: ['Golf'],
 };
 
 // 9. READING DATA (The GET Route - 'read operation')
@@ -1623,6 +1624,58 @@ app.get('/api/matches/:id/summary', (req, res) => {
             } catch (fetchErr) {
                 console.error('Error fetching cricket scorecard:', fetchErr.message);
                 return respond(404, { error: 'No scorecard available for this match' });
+            }
+        }
+
+        // Golf: a leaderboard instead of a box score. ESPN's per-event golf summary
+        // endpoint 500s on their side, but the tour scoreboard fetched around the
+        // tournament's start date carries the complete leaderboard (verified this
+        // holds for finished events too, not just live ones) - so the scoreboard IS
+        // the leaderboard source. series_id stores the tour slug (pga/liv) at
+        // ingestion, mirroring how cricket rows store their series id.
+        if (row.league_id === 'golf') {
+            if (!row.series_id || !String(row.external_id).startsWith('golf-')) {
+                return respond(404, { error: 'No leaderboard available for this match' });
+            }
+            const eventId = String(row.external_id).slice('golf-'.length);
+            const start = new Date(row.start_time);
+            if (isNaN(start.getTime())) {
+                return respond(404, { error: 'No leaderboard available for this match' });
+            }
+            try {
+                const fmtDay = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
+                const dayMs = 24 * 60 * 60 * 1000;
+                // -1/+7 days around the start so timezone skew and the multi-day
+                // spread of a tournament can't push the event out of the range
+                const range = `${fmtDay(new Date(start.getTime() - dayMs))}-${fmtDay(new Date(start.getTime() + 7 * dayMs))}`;
+                const url = `https://site.api.espn.com/apis/site/v2/sports/golf/${encodeURIComponent(row.series_id)}/scoreboard?dates=${range}`;
+                const espnRes = await fetch(url);
+                if (!espnRes.ok) return respond(404, { error: 'No leaderboard available for this match' });
+                const json = await espnRes.json();
+                const event = (json.events || []).find((e) => String(e.id) === eventId);
+                const comp = event?.competitions?.[0];
+                const competitors = comp?.competitors || [];
+                if (competitors.length === 0) {
+                    return respond(404, { error: 'No leaderboard available for this match' });
+                }
+                const leaderboard = [...competitors]
+                    .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
+                    .map((c) => ({
+                        position: c.order ?? null,
+                        name: c.athlete?.displayName || null,
+                        flag: c.athlete?.flag?.href || null,
+                        // Score-to-par display string ("-8", "E", "+2") - the ranking metric
+                        score: c.score ?? null,
+                        // Strokes per completed round (72, 68, ...)
+                        rounds: (c.linescores || []).map((l) => (l.value != null ? String(l.value) : '-')),
+                    }));
+                return respond(200, {
+                    leaderboard,
+                    round: comp.status?.type?.detail || null,
+                });
+            } catch (fetchErr) {
+                console.error('Error fetching golf leaderboard:', fetchErr.message);
+                return respond(404, { error: 'No leaderboard available for this match' });
             }
         }
 
