@@ -292,22 +292,6 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
                 });
             }
 
-            // One-time category unification ("Soccer" rows predate the fixed scraper
-            // vocabulary; "Football" now unambiguously means soccer, matching Match
-            // Center). Idempotent, so safe to run every boot - it stops matching rows
-            // as soon as the old labels age out of the 7-day posts window.
-            db.run(`UPDATE posts SET sport_category = 'Football' WHERE sport_category = 'Soccer'`, function(err) {
-                if (err) console.error("Error normalizing Soccer categories:", err.message);
-                else if (this.changes > 0) console.log(`🏷️ Normalized ${this.changes} 'Soccer' post(s) to 'Football'`);
-            });
-
-            // One-time vendor cleanup (Match Center v3): cricket moved from CricketData.org
-            // to ESPN, and leftover cricketdata rows would render as duplicates next to the
-            // fresh ESPN rows for the same matches. Idempotent - matches no rows once gone.
-            db.run(`DELETE FROM matches WHERE vendor = 'cricketdata'`, function(err) {
-                if (err) console.error("Error removing cricketdata rows:", err.message);
-                else if (this.changes > 0) console.log(`🏏 Removed ${this.changes} retired cricketdata match row(s)`);
-            });
         });
 
         // Create the FTS5 Virtual Table for Global Search
@@ -692,9 +676,9 @@ app.post('/api/posts', verifyScraper, (req, res) => {
 // Maps each Match Center league_id to the sport_category value(s) our AI-rewrite pipeline
 // actually uses for that sport, so a user's explicit league picks can boost matching posts
 // in their feed. Built from real observed sport_category values in production, not guessed.
-// The scraper vocabulary + CATEGORY_SYNONYMS now normalize labels at insert ("Soccer" ->
-// "Football" etc.), but the old synonyms stay listed here harmlessly as a belt-and-braces
-// match for any stragglers. This is necessarily sport-level, not
+// "Soccer" can no longer occur as a label (the scraper prompt forbids it and
+// CATEGORY_SYNONYMS rewrites any slip to "Football" at insert; prod's old rows were
+// normalized on 2026-07-18), so only "Football" is listed. This is necessarily sport-level, not
 // league-level: posts are only ever tagged with a broad sport (e.g. "Football"), never a
 // specific league, so picking "Premier League" boosts ALL football posts, not Premier
 // League ones specifically - true league-level personalization would need the AI pipeline
@@ -708,18 +692,18 @@ const LEAGUE_TO_SPORT_CATEGORIES = {
     atp: ['Tennis'],
     ufc: ['MMA'],
     f1: ['Formula 1', 'Motorsport'],
-    premier_league: ['Football', 'Soccer'],
-    serie_a: ['Football', 'Soccer'],
-    la_liga: ['Football', 'Soccer'],
-    bundesliga: ['Football', 'Soccer'],
-    ligue_1: ['Football', 'Soccer'],
-    champions_league: ['Football', 'Soccer'],
-    europa_league: ['Football', 'Soccer'],
-    conference_league: ['Football', 'Soccer'],
-    world_cup: ['Football', 'Soccer'],
-    euros: ['Football', 'Soccer'],
-    copa_america: ['Football', 'Soccer'],
-    nations_league: ['Football', 'Soccer'],
+    premier_league: ['Football'],
+    serie_a: ['Football'],
+    la_liga: ['Football'],
+    bundesliga: ['Football'],
+    ligue_1: ['Football'],
+    champions_league: ['Football'],
+    europa_league: ['Football'],
+    conference_league: ['Football'],
+    world_cup: ['Football'],
+    euros: ['Football'],
+    copa_america: ['Football'],
+    nations_league: ['Football'],
 };
 
 // 9. READING DATA (The GET Route - 'read operation')
