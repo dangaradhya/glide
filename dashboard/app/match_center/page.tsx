@@ -13,7 +13,7 @@ import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import Brand from '@/components/Brand';
 import TopTabs from '@/components/TopTabs';
-import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel } from '@/lib/leagues';
+import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel, tournamentFilterKey } from '@/lib/leagues';
 
 // How stale a league's freshest row can be before the scoreboard card gives way to
 // the outbound-link card. Future fixtures are only re-upserted by the HOURLY sweep
@@ -242,9 +242,46 @@ function LeagueScoreboardCard({
   expanded: boolean;
   onToggleExpanded: () => void;
 }) {
-  const groups = useMemo(() => groupByDay(matches), [matches]);
+  // Tournament filter chips, derived from whatever competitions are in the data
+  // right now (cricket series, tennis tournaments, golf tours) - never hardcoded,
+  // so they appear and disappear as competitions start and end. First-seen order:
+  // rows arrive live-first, so competitions with live matches lead the chip row.
+  // The choice persists per league in localStorage; read in an effect because the
+  // static prerender runs where localStorage doesn't exist.
+  const [filter, setFilter] = useState<string | null>(null);
+  useEffect(() => {
+    setFilter(localStorage.getItem(`glide_mc_filter_${league.id}`));
+  }, [league.id]);
+
+  const chips = useMemo(() => {
+    const seen: string[] = [];
+    for (const m of matches) {
+      const key = tournamentFilterKey(league.id, m.tournament);
+      if (key && !seen.includes(key)) seen.push(key);
+    }
+    return seen;
+  }, [matches, league.id]);
+
+  const pickFilter = (value: string | null) => {
+    setFilter(value);
+    if (value) localStorage.setItem(`glide_mc_filter_${league.id}`, value);
+    else localStorage.removeItem(`glide_mc_filter_${league.id}`);
+  };
+
+  // A stored filter whose competition has since ended is ignored (card shows All)
+  // rather than rendering an empty card; it's left in storage untouched in case
+  // the competition returns before the user picks something else.
+  const activeFilter = filter && chips.includes(filter) ? filter : null;
+  const filteredMatches = activeFilter
+    ? matches.filter(m => tournamentFilterKey(league.id, m.tournament) === activeFilter)
+    : matches;
+
+  const groups = useMemo(() => groupByDay(filteredMatches), [filteredMatches]);
   const visibleKeys = useMemo(() => defaultVisibleDayKeys(groups), [groups]);
 
+  // Live count stays computed on the UNFILTERED set - the header badge reports the
+  // league's reality, not the current filter's slice (same reason the staleness
+  // check upstream never sees the filter).
   const liveCount = matches.filter(m => m.status === 'live').length;
   const visibleGroups = expanded ? groups : groups.filter(g => visibleKeys.has(g.key));
   // Live rows are never hidden by the per-day collapse cap - they sort first within
@@ -252,7 +289,7 @@ function LeagueScoreboardCard({
   const rowsFor = (group: DayGroup) =>
     expanded ? group.matches : group.matches.slice(0, COLLAPSED_ROWS_PER_DAY);
 
-  const hiddenCount = matches.length - visibleGroups.reduce((n, g) => n + rowsFor(g).length, 0);
+  const hiddenCount = filteredMatches.length - visibleGroups.reduce((n, g) => n + rowsFor(g).length, 0);
 
   return (
     <div className="flex flex-col break-inside-avoid mb-4 md:mb-6 rounded-xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -285,6 +322,37 @@ function LeagueScoreboardCard({
           </div>
         </div>
       </a>
+
+      {/* Competition filter chips - only when the card actually aggregates 2+
+          competitions, so team-sport cards never grow pointless UI */}
+      {chips.length >= 2 && (
+        <div className="flex gap-1.5 px-3 py-2 overflow-x-auto border-b border-gray-100 dark:border-gray-800 [scrollbar-width:none]">
+          <button
+            onClick={() => pickFilter(null)}
+            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-[0.07em] transition-colors ${
+              activeFilter === null
+                ? 'bg-court text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            All
+          </button>
+          {chips.map(chip => (
+            <button
+              key={chip}
+              onClick={() => pickFilter(chip)}
+              title={chip}
+              className={`shrink-0 whitespace-nowrap max-w-56 truncate rounded-full px-2.5 py-1 font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-[0.07em] transition-colors ${
+                activeFilter === chip
+                  ? 'bg-court text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
 
       {visibleGroups.map(group => (
         <div key={group.key}>
@@ -320,7 +388,7 @@ function LeagueScoreboardCard({
           onClick={onToggleExpanded}
           className="w-full px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 transition-colors"
         >
-          {expanded ? 'Show fewer' : `Show all ${matches.length} matches`}
+          {expanded ? 'Show fewer' : `Show all ${filteredMatches.length} matches`}
         </button>
       )}
     </div>

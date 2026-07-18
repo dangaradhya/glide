@@ -15,14 +15,15 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API_BASE_URL, apiFetch } from '@/lib/api';
-import { AVAILABLE_LEAGUES, Match, parseUtc } from '@/lib/leagues';
+import { AVAILABLE_LEAGUES, Match, parseUtc, tournamentFilterKey } from '@/lib/leagues';
 
 const POLL_INTERVAL_MS = 60 * 1000; // matches Match Center's own polling cadence
 const MAX_ROWS = 8;
 const FILL_WINDOW_MS = 48 * 3600 * 1000;
 
 function railRows(rows: Match[], preferredLeagues: string[] | null): Match[] {
-  let named = rows.filter(m => m.home_team && m.away_team);
+  // Golf rows are one-per-tournament with only home_team filled, by design
+  let named = rows.filter(m => m.home_team && (m.away_team || m.league_id === 'golf'));
   if (preferredLeagues && preferredLeagues.length > 0) {
     const filtered = named.filter(m => preferredLeagues.includes(m.league_id));
     if (filtered.length > 0) named = filtered;
@@ -67,6 +68,11 @@ function RailRow({ match }: { match: Match }) {
   const isFinal = match.status === 'final';
   const hasScores = !isLive && !isFinal ? false : match.home_score != null && match.away_score != null;
   const timeLabel = isLive ? (match.clock || 'Live') : isFinal ? 'Final' : kickoffLabel(match.start_time);
+  // The specific competition when the row has one (cricket series, tennis
+  // tournament, golf tour) - "Lanka Premier League" tells a reader far more than
+  // the generic "Intl Cricket" ever did. League name stays the fallback.
+  const contextLabel = tournamentFilterKey(match.league_id, match.tournament)
+    || league?.name || match.league_id;
 
   return (
     <Link
@@ -75,7 +81,7 @@ function RailRow({ match }: { match: Match }) {
     >
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="font-display font-stretch-[72%] font-semibold uppercase tracking-[0.07em] text-[10px] text-gray-400 dark:text-gray-500 truncate">
-          {league?.name || match.league_id}
+          {contextLabel}
         </span>
         <span className={`font-display font-stretch-[72%] font-semibold uppercase tracking-[0.07em] text-[10px] shrink-0 ${isLive ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
           {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse motion-reduce:animate-none mr-1 align-middle" aria-hidden="true"></span>}
@@ -84,7 +90,9 @@ function RailRow({ match }: { match: Match }) {
       </div>
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="font-medium text-gray-800 dark:text-gray-100 truncate">
-          {match.home_team} <span className="text-gray-400">vs</span> {match.away_team}
+          {match.away_team == null
+            ? match.home_team
+            : <>{match.home_team} <span className="text-gray-400">vs</span> {match.away_team}</>}
         </span>
         {hasScores ? (
           <span className="font-bold tabular-nums text-gray-900 dark:text-white shrink-0">
