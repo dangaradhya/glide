@@ -699,6 +699,7 @@ app.post('/api/posts', verifyScraper, (req, res) => {
 // to extract which league an article is about, out of scope here.
 const LEAGUE_TO_SPORT_CATEGORIES = {
     nba: ['Basketball', 'WNBA'],
+    wnba: ['Basketball', 'WNBA'],
     mlb: ['Baseball'],
     nfl: ['NFL', 'American Football'],
     nhl: ['Hockey', 'Ice Hockey'],
@@ -718,6 +719,8 @@ const LEAGUE_TO_SPORT_CATEGORIES = {
     euros: ['Football'],
     copa_america: ['Football'],
     nations_league: ['Football'],
+    mls: ['Football'],
+    championship: ['Football'],
 };
 
 // 9. READING DATA (The GET Route - 'read operation')

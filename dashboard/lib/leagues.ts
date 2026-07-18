@@ -17,6 +17,7 @@ export interface League {
 
 export const AVAILABLE_LEAGUES: League[] = [
   { id: 'nba', name: 'NBA', category: 'Basketball', url: 'https://www.espn.com/nba/scoreboard', color: 'from-orange-400 to-red-500' },
+  { id: 'wnba', name: 'WNBA', category: 'Basketball', url: 'https://www.espn.com/wnba/scoreboard', color: 'from-amber-400 to-orange-600' },
   { id: 'mlb', name: 'MLB', category: 'Baseball', url: 'https://www.espn.com/mlb/scoreboard', color: 'from-blue-600 to-blue-900' },
   { id: 'nfl', name: 'NFL', category: 'American Football', url: 'https://www.espn.com/nfl/scoreboard', color: 'from-sky-500 to-indigo-600' },
   { id: 'nhl', name: 'NHL', category: 'Hockey', url: 'https://www.espn.com/nhl/scoreboard', color: 'from-cyan-400 to-blue-600' },
@@ -25,10 +26,12 @@ export const AVAILABLE_LEAGUES: League[] = [
   { id: 'ufc', name: 'UFC', category: 'MMA', url: 'https://www.espn.com/mma/schedule', color: 'from-red-600 to-red-900' },
   { id: 'f1', name: 'Formula 1', category: 'Motorsport', url: 'https://www.formula1.com/en/racing/2026.html', color: 'from-red-500 to-rose-700' },
   { id: 'premier_league', name: 'Premier League', category: 'Football', url: 'https://www.fotmob.com/leagues/47/overview/premier-league', color: 'from-purple-500 to-indigo-600' },
+  { id: 'championship', name: 'EFL Championship', category: 'Football', url: 'https://www.espn.com/soccer/scoreboard/_/league/eng.2', color: 'from-blue-700 to-slate-900' },
   { id: 'serie_a', name: 'Serie A', category: 'Football', url: 'https://www.fotmob.com/leagues/55/overview/serie-a', color: 'from-blue-500 to-blue-800' },
   { id: 'la_liga', name: 'La Liga', category: 'Football', url: 'https://www.fotmob.com/leagues/87/overview/la-liga', color: 'from-orange-400 to-red-600' },
   { id: 'bundesliga', name: 'Bundesliga', category: 'Football', url: 'https://www.fotmob.com/leagues/54/overview/bundesliga', color: 'from-red-500 to-neutral-800' },
   { id: 'ligue_1', name: 'Ligue 1', category: 'Football', url: 'https://www.fotmob.com/leagues/53/overview/ligue-1', color: 'from-yellow-400 to-yellow-600' },
+  { id: 'mls', name: 'MLS', category: 'Football', url: 'https://www.espn.com/soccer/scoreboard/_/league/usa.1', color: 'from-red-500 to-blue-800' },
   { id: 'champions_league', name: 'UEFA Champions League', category: 'Football', url: 'https://www.fotmob.com/leagues/42/overview/champions-league', color: 'from-indigo-800 to-blue-900' },
   { id: 'europa_league', name: 'UEFA Europa League', category: 'Football', url: 'https://www.fotmob.com/leagues/73/overview/europa-league', color: 'from-orange-500 to-yellow-600' },
   { id: 'conference_league', name: 'UEFA Conference League', category: 'Football', url: 'https://www.fotmob.com/leagues/10216/overview/uefa-conference-league', color: 'from-green-500 to-teal-700' },
