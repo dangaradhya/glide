@@ -5,17 +5,18 @@
 // directly, and instead POSTs normalized results to a scraper-key-authenticated route
 // (/api/matches) - same separation the existing posts/reels pipeline uses.
 //
-// Two vendors, two cadences:
-// - ESPN's public scoreboard endpoint (site.api.espn.com) covers football/NBA/MLB/NFL/NHL/
-//   Tennis for free with no API key and no visible rate limit, so it's polled every minute -
-//   close to real "live" without the 20-minute-per-request-quota math API-Sports forced on us.
-//   NOTE: this is an undocumented, unofficial endpoint (the same one espn.com's own frontend
-//   calls) - there's no published SLA and it likely isn't authorized for this kind of reuse
-//   under ESPN's ToS. Accepted as a known risk for now (flagged in the roadmap); if it ever
-//   gets blocked/rate-limited, affected leagues just fall back to the existing outbound-link
-//   cards via the staleness check in the frontend (task 5), same as any vendor outage would.
-// - CricketData.org has a real per-day quota (100/day free tier), so it stays on the original
-//   20-minute cadence.
+// Everything now comes from ESPN's public endpoints (no API key, no visible rate limit):
+// - site.api.espn.com per-league scoreboards cover football/NBA/MLB/NFL/NHL/Tennis,
+//   polled every minute - close to real "live".
+// - site.web.api.espn.com's scoreboard header feed covers ALL current cricket in one
+//   request (series names + human-readable innings scores), polled every 5 minutes.
+//   This replaced CricketData.org (Match Center v3), whose free tier had a hard
+//   100 req/day quota and had started serving days-stale "live" matches.
+// NOTE: these are undocumented, unofficial endpoints (the same ones espn.com's own
+// frontend calls) - there's no published SLA and reuse likely isn't authorized under
+// ESPN's ToS. Accepted as a known risk (flagged in the roadmap); if they ever get
+// blocked, affected leagues fall back to the outbound-link cards via the frontend's
+// staleness check, same as any vendor outage would.
 // F1 and MMA are deliberately excluded - both exist on ESPN too, but neither fits the
 // two-teams-with-a-score shape (F1 is a multi-entrant race with a finishing order, MMA is a
 // 1-on-1 fight decided by method, not a score) - revisit with a schema that fits them later.
@@ -24,7 +25,6 @@ const cron = require('node-cron');
 
 const PORT = process.env.PORT || 3000;
 const MATCHES_API_URL = `http://127.0.0.1:${PORT}/api/matches`;
-const CRICKET_DATA_API_KEY = process.env.CRICKET_DATA_API_KEY;
 
 // The league_id -> ESPN (sport, slug) map lives in espnLeagues.js so the box-score
 // summary route in index.js can share it without require()ing this file's cron
@@ -71,6 +71,8 @@ function normalizeEspnEvent(event, league_id) {
         // Only meaningful mid-game; ESPN's shortDetail is a formatted start time for
         // scheduled events (e.g. "7/16 - 7:00 PM EDT"), not a live clock.
         clock: status === 'live' ? comp.status.type.shortDetail : null,
+        // Team sports don't need one - the league card already names the competition
+        tournament: null,
     };
 }
 
@@ -81,7 +83,7 @@ function normalizeEspnEvent(event, league_id) {
 // `.team.displayName`, and there's no single score number - `linescores` is a per-set array
 // (e.g. two sets, 6-2 6-2), which score_summary joins into "6-2, 6-2" the same way cricket's
 // per-innings score gets flattened into a display string.
-function normalizeEspnTennisMatch(match, league_id) {
+function normalizeEspnTennisMatch(match, league_id, tournament) {
     const home = match.competitors.find((c) => c.homeAway === 'home');
     const away = match.competitors.find((c) => c.homeAway === 'away');
     const status = normalizeEspnStatus(match.status.type.state);
@@ -108,6 +110,7 @@ function normalizeEspnTennisMatch(match, league_id) {
         status,
         start_time: match.date,
         clock: status === 'live' ? match.status.type.shortDetail : null,
+        tournament,
     };
 }
 
@@ -121,53 +124,69 @@ async function fetchEspnLeague({ league_id, sport, slug }, dateRange) {
     const events = json.events || [];
 
     if (sport === 'tennis') {
+        // A tennis "event" is a whole tournament; the draw name (Men's Singles /
+        // Women's Singles / ...) lives on the grouping. "Tournament · Draw" is what
+        // the frontend groups rows under - it's also how men's and women's matches
+        // stop being jumbled together in one anonymous list.
         return events.flatMap((event) =>
-            (event.groupings || []).flatMap((grouping) =>
-                (grouping.competitions || []).map((match) => normalizeEspnTennisMatch(match, league_id))
-            )
+            (event.groupings || []).flatMap((grouping) => {
+                const tournament = [
+                    event.shortName || event.name,
+                    grouping.grouping?.displayName,
+                ].filter(Boolean).join(' · ') || null;
+                return (grouping.competitions || []).map((match) => normalizeEspnTennisMatch(match, league_id, tournament));
+            })
         );
     }
 
     return events.map((event) => normalizeEspnEvent(event, league_id));
 }
 
-// CricketData.org's shape is messier than ESPN's: `status` is a free-text result sentence
-// (e.g. "West Indies Women won by 6 wkts"), not a clean code, so match state is derived from
-// the matchStarted/matchEnded booleans instead. `score` is an array of per-innings {r,w,o}
-// objects (Test matches can have up to 4 innings), so it doesn't reduce to two integers -
-// home_score/away_score stay null and score_summary carries the display line.
+// ESPN's scoreboard header feed is the one cricket endpoint that returns EVERYTHING
+// currently on (all active series/leagues in one request) - the per-league scoreboard
+// pattern used for other sports needs per-series slugs that change constantly, which is
+// why cricket originally went to CricketData.org instead. Shape differences from the
+// team-sport scoreboard: events sit under sports[0].leagues[].events[], status is a bare
+// 'pre'/'in'/'post' string, and competitor `score` is already a human-readable innings
+// line ("279/4 (96 ov)") rather than a number - so home_score/away_score stay null and
+// score_summary carries the display text, same contract cricket rows always had. The
+// series name (league.name) goes in `tournament`, prefixed with the match title when
+// ESPN provides one ("2nd Youth Test"). `summary` ("Stumps", "Lunch", ...) is the
+// closest thing cricket has to a live clock, so it rides in `clock`.
 async function fetchCricket() {
-    const url = `https://api.cricapi.com/v1/currentMatches?apikey=${CRICKET_DATA_API_KEY}&offset=0`;
+    const url = 'https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=cricket';
     const res = await fetch(url);
     const json = await res.json();
-    if (json.status !== 'success') {
-        console.error('   ⚠️ CricketData.org returned an error:', JSON.stringify(json.info || json.status));
-        return [];
-    }
 
-    return (json.data || []).map((match) => {
-        let status = 'scheduled';
-        if (match.matchEnded) status = 'final';
-        else if (match.matchStarted) status = 'live';
+    const leagues = json.sports?.[0]?.leagues || [];
+    return leagues.flatMap((league) =>
+        (league.events || []).map((event) => {
+            const home = (event.competitors || []).find((c) => c.homeAway === 'home');
+            const away = (event.competitors || []).find((c) => c.homeAway === 'away');
+            const status = normalizeEspnStatus(event.status);
 
-        const scoreSummary = (match.score || [])
-            .map((inn) => `${inn.r}/${inn.w}`)
-            .join(', ') || null;
+            const scoreSummary = [home?.score, away?.score]
+                .filter((s) => s && String(s).trim() !== '')
+                .join(' · ') || null;
 
-        return {
-            league_id: 'cricket',
-            vendor: 'cricketdata',
-            external_id: match.id,
-            home_team: match.teams?.[0] || null,
-            away_team: match.teams?.[1] || null,
-            home_score: null,
-            away_score: null,
-            score_summary: scoreSummary,
-            status,
-            start_time: match.dateTimeGMT || match.date || null,
-            clock: null,
-        };
-    });
+            return {
+                league_id: 'cricket',
+                vendor: 'espn',
+                external_id: `cricket-${event.id}`,
+                home_team: home?.displayName || home?.name || null,
+                away_team: away?.displayName || away?.name || null,
+                home_logo: null,
+                away_logo: null,
+                home_score: null,
+                away_score: null,
+                score_summary: scoreSummary,
+                status,
+                start_time: event.date || null,
+                clock: status === 'live' ? (event.summary || null) : null,
+                tournament: [event.title, league.name].filter(Boolean).join(' · ') || null,
+            };
+        })
+    );
 }
 
 async function postMatchesBatch(matches, label) {
@@ -250,10 +269,11 @@ async function runCricketCycle() {
 // cycle every minute (no visible quota, but still a good-citizen interval against an
 // undocumented endpoint), the fixtures sweep hourly at :07 (offset so it never lands on
 // the same tick as a live cycle - fixtures barely change hour to hour), cricket every
-// 20 minutes (CricketData.org's free tier has a hard 100 requests/day cap).
+// 5 minutes (also ESPN now, so no daily quota - but one whole-sport feed doesn't need
+// minute-level freshness; keep the frontend's cricket staleness leash above this).
 runEspnCycle();
 runEspnFixturesCycle();
 runCricketCycle();
 cron.schedule('* * * * *', runEspnCycle);
 cron.schedule('7 * * * *', runEspnFixturesCycle);
-cron.schedule('*/20 * * * *', runCricketCycle);
+cron.schedule('*/5 * * * *', runCricketCycle);

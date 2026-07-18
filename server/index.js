@@ -280,7 +280,11 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
             // SQLite has no ADD COLUMN IF NOT EXISTS, so the "duplicate column name" error
             // on every boot after the first is expected and swallowed - any OTHER error is
             // still surfaced. Additive-only, per the schema-change PR checklist.
-            for (const col of ['home_logo', 'away_logo']) {
+            // tournament (added with Match Center v3): tennis stores "Tournament · Draw"
+            // (e.g. "Nordea Open · Women's Singles" - also how men's/women's draws get
+            // separated in the UI) and cricket stores the series name; team sports leave
+            // it NULL since the league card itself already names the competition.
+            for (const col of ['home_logo', 'away_logo', 'tournament']) {
                 db.run(`ALTER TABLE matches ADD COLUMN ${col} TEXT`, (alterErr) => {
                     if (alterErr && !alterErr.message.includes('duplicate column name')) {
                         console.error(`Error adding matches.${col}:`, alterErr.message);
@@ -295,6 +299,14 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
             db.run(`UPDATE posts SET sport_category = 'Football' WHERE sport_category = 'Soccer'`, function(err) {
                 if (err) console.error("Error normalizing Soccer categories:", err.message);
                 else if (this.changes > 0) console.log(`🏷️ Normalized ${this.changes} 'Soccer' post(s) to 'Football'`);
+            });
+
+            // One-time vendor cleanup (Match Center v3): cricket moved from CricketData.org
+            // to ESPN, and leftover cricketdata rows would render as duplicates next to the
+            // fresh ESPN rows for the same matches. Idempotent - matches no rows once gone.
+            db.run(`DELETE FROM matches WHERE vendor = 'cricketdata'`, function(err) {
+                if (err) console.error("Error removing cricketdata rows:", err.message);
+                else if (this.changes > 0) console.log(`🏏 Removed ${this.changes} retired cricketdata match row(s)`);
             });
         });
 
@@ -1369,8 +1381,8 @@ app.post('/api/matches', verifyScraper, (req, res) => {
     }
 
     const sql = `
-        INSERT INTO matches (league_id, vendor, external_id, home_team, away_team, home_logo, away_logo, home_score, away_score, score_summary, status, start_time, clock, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO matches (league_id, vendor, external_id, home_team, away_team, home_logo, away_logo, home_score, away_score, score_summary, status, start_time, clock, tournament, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(vendor, external_id) DO UPDATE SET
             home_team = excluded.home_team,
             away_team = excluded.away_team,
@@ -1382,6 +1394,7 @@ app.post('/api/matches', verifyScraper, (req, res) => {
             status = excluded.status,
             start_time = excluded.start_time,
             clock = excluded.clock,
+            tournament = excluded.tournament,
             last_updated = CURRENT_TIMESTAMP
     `;
 
@@ -1392,6 +1405,7 @@ app.post('/api/matches', verifyScraper, (req, res) => {
             m.league_id, m.vendor, m.external_id, m.home_team, m.away_team,
             m.home_logo ?? null, m.away_logo ?? null,
             m.home_score, m.away_score, m.score_summary, m.status, m.start_time, m.clock,
+            m.tournament ?? null,
         ], (err) => {
             if (err) { failed++; console.error('Error upserting match:', err.message); }
             else upserted++;
@@ -1443,7 +1457,7 @@ app.get('/api/matches', (req, res) => {
 
     const sql = `
         SELECT id, league_id, vendor, external_id, home_team, away_team, home_logo, away_logo,
-               home_score, away_score, score_summary, status, start_time, clock, last_updated
+               home_score, away_score, score_summary, status, start_time, clock, tournament, last_updated
         FROM (${inner})
         WHERE relevance_rank <= 60
         ORDER BY
@@ -1540,10 +1554,36 @@ app.get('/api/matches/:id/summary', (req, res) => {
                 .filter(Boolean)
                 .slice(0, 12);
 
+            // Soccer only: goalscorers from keyEvents (scorer name, minute, penalty/own-goal
+            // flags). Shootout conversions are excluded - the shootout result is already the
+            // score line, and listing 8+ "scorers" for it drowns the real goals. Other sports
+            // omit the field entirely rather than sending an empty array.
+            let scorers;
+            if (league.sport === 'soccer') {
+                scorers = (summary.keyEvents || [])
+                    .filter((e) => e.scoringPlay && !e.shootout)
+                    .map((e) => {
+                        // keyEvents carry the scorer as participants[0].athlete (participants[1]
+                        // is the assist); athletesInvolved is the scoreboard-details shape, kept
+                        // as a fallback. Penalty/own-goal ride in type.text here ("Penalty - Scored",
+                        // "Own Goal"), not the boolean flags the scoreboard shape uses.
+                        const athlete = e.participants?.[0]?.athlete || e.athletesInvolved?.[0];
+                        const typeText = e.type?.text || '';
+                        return {
+                            name: athlete?.shortName || athlete?.displayName || 'Unknown',
+                            minute: e.clock?.displayValue || '',
+                            team: e.team?.id === home.team?.id ? 'home' : 'away',
+                            penalty: !!e.penaltyKick || /penalt/i.test(typeText),
+                            ownGoal: !!e.ownGoal || /own goal/i.test(typeText),
+                        };
+                    });
+            }
+
             respond(200, {
                 home: side(home),
                 away: side(away),
                 stats,
+                ...(scorers ? { scorers } : {}),
                 venue: summary.gameInfo?.venue?.fullName || null,
                 attendance: summary.gameInfo?.attendance || null,
             });
