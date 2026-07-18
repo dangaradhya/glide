@@ -213,7 +213,7 @@ export default function ProfileVault() {
     // No extra top padding needed here for the notch - <body>'s pt-[var(--app-banner-height)]
     // (see layout.tsx) already reserves that space for every page. Adding it again here
     // would double-count the notch inset on top of what body already reserves.
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
+    <main className="min-h-screen bg-chalk dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
       <div className="max-w-6xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
 
         {/* Header Section - Text-only header matching the other pages */}

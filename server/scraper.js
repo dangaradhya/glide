@@ -74,7 +74,7 @@ async function batchFormatWithGemini(articlesArray) {
     ${JSON.stringify(articlesArray)}
     
     Return ONLY a valid JSON ARRAY containing objects with exact following keys (no markdown formatting, no code blocks):
-    - sport_category: (e.g., "Football", "Golf", "Formula 1")
+    - sport_category: (A short label like "NFL", "NBA", "WNBA", "MLB", "Tennis", "Formula 1", and so on. ONE HARD RULE: always label soccer as "Football" - it is the universal name, so the label "Soccer" must never appear. American football is NEVER "Football": use "NFL", "College Football", or "American Football")
     - headline: (A punchy, exciting headline. Sentence case only - capitalize the first word and proper nouns/acronyms like MLB or NBA, never write whole words in ALL CAPS. At most one exclamation mark, and avoid the "SHOUTED PHRASE: fragment" colon pattern)
     - content: (The rewritten summary, max 2 sentences. Make it sound exciting)
     - excitement_level: (A number from 1 to 10)

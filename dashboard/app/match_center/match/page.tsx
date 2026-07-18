@@ -307,7 +307,7 @@ export default function MatchDetailPage() {
     // Same page chrome as the Match Center dashboard, with the detail content
     // Suspense-wrapped because useSearchParams opts the subtree out of the static
     // prerender (per the Next docs) - the fallback matches the loading spinner.
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
+    <main className="min-h-screen bg-chalk dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
       <div className="max-w-6xl mx-auto pb-[calc(6rem_+_var(--app-safe-bottom))] md:pb-8">
         <div className="flex items-center justify-between mb-4">
           <Brand />

@@ -638,7 +638,7 @@ function ReelsContent() {
     // the true bottom of the screen by the banner's height, dragging the icon column and
     // metadata text down with it (worse on some navigations than others because mobile
     // Chrome's dvh value shifts as its own address bar shows/hides between navigations).
-    <main className="bg-gray-100 dark:bg-black text-gray-900 dark:text-white h-[calc(100dvh_-_var(--app-banner-height))] overflow-hidden flex flex-col">
+    <main className="bg-chalk dark:bg-black text-gray-900 dark:text-white h-[calc(100dvh_-_var(--app-banner-height))] overflow-hidden flex flex-col">
 
       {/* Pull-to-Refresh Indicator - tracks the drag gesture detected on the scroll container */}
       <PullToRefreshIndicator pullDistance={reelsPullDistance} isRefreshing={isReelsRefreshing} threshold={reelsPullThreshold} />

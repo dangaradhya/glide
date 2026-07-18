@@ -287,6 +287,15 @@ const db = new sqlite3.Database('./data/glide.sqlite', (err) => {
                     }
                 });
             }
+
+            // One-time category unification ("Soccer" rows predate the fixed scraper
+            // vocabulary; "Football" now unambiguously means soccer, matching Match
+            // Center). Idempotent, so safe to run every boot - it stops matching rows
+            // as soon as the old labels age out of the 7-day posts window.
+            db.run(`UPDATE posts SET sport_category = 'Football' WHERE sport_category = 'Soccer'`, function(err) {
+                if (err) console.error("Error normalizing Soccer categories:", err.message);
+                else if (this.changes > 0) console.log(`🏷️ Normalized ${this.changes} 'Soccer' post(s) to 'Football'`);
+            });
         });
 
         // Create the FTS5 Virtual Table for Global Search
@@ -634,13 +643,23 @@ app.post('/api/posts/check', verifyScraper, (req, res) => {
 // When your scraper grabs a new article from the web and Gemini formats it, the scraper needs a way to hand that 
 // data over to the database. It packages the data into a JSON payload and sends it via a POST request.
 // Added verifyScraper middleware to protect this route
+// Categories stay deliberately granular (NFL, NBA, WNBA, MLB, ... - better pills than
+// broad sport names), with exactly ONE pinned rule enforced in the scraper prompt:
+// "Football" means soccer, and "Soccer" is never a label. This map is the safety net
+// for the one synonym the AI is known to slip on.
+const CATEGORY_SYNONYMS = {
+    'Soccer': 'Football',
+};
+
 app.post('/api/posts', verifyScraper, (req, res) => {
-    const { sport_category, headline, content, excitement_level, url, image_url } = req.body;
+    let { sport_category, headline, content, excitement_level, url, image_url } = req.body;
 
     // Basic validation: Check if the request is missing any data.
     if (!sport_category || !headline || !content || !excitement_level || !url) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
+
+    sport_category = CATEGORY_SYNONYMS[sport_category] || sport_category;
 
     // The question marks are placeholders for parameterized queries. They help prevent SQL injection attacks by treating the 
     // values as data rather than executable code. When we call db.run, we pass an array of values that correspond to each question
@@ -660,9 +679,10 @@ app.post('/api/posts', verifyScraper, (req, res) => {
 
 // Maps each Match Center league_id to the sport_category value(s) our AI-rewrite pipeline
 // actually uses for that sport, so a user's explicit league picks can boost matching posts
-// in their feed. Built from real observed sport_category values in production, not guessed
-// - notably, the AI labels soccer inconsistently ("Football" vs "Soccer" both occur), so
-// both are listed everywhere that applies. This is necessarily sport-level, not
+// in their feed. Built from real observed sport_category values in production, not guessed.
+// The scraper vocabulary + CATEGORY_SYNONYMS now normalize labels at insert ("Soccer" ->
+// "Football" etc.), but the old synonyms stay listed here harmlessly as a belt-and-braces
+// match for any stragglers. This is necessarily sport-level, not
 // league-level: posts are only ever tagged with a broad sport (e.g. "Football"), never a
 // specific league, so picking "Premier League" boosts ALL football posts, not Premier
 // League ones specifically - true league-level personalization would need the AI pipeline

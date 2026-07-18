@@ -83,7 +83,7 @@ export default function RootLayout({
           firing at the same time as our custom pull-to-refresh gesture on the Posts feed */}
       {/* pt reserves --app-banner-height (banner + safe-area) so page content always starts
           right below the (now taller-on-notched-devices) banner below */}
-      <body className="min-h-full flex flex-col bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-white pt-[var(--app-banner-height)] relative overscroll-y-contain">
+      <body className="min-h-full flex flex-col bg-chalk text-gray-900 dark:bg-gray-950 dark:text-white pt-[var(--app-banner-height)] relative overscroll-y-contain">
 
         {/* GLOBAL MOBILE APP LAUNCH STICKY BANNER - hides itself on native, see AppBanner.tsx */}
         <AppBanner />

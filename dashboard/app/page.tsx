@@ -592,7 +592,7 @@ export default function Home() {
     // No extra top padding needed here for the notch - <body>'s pt-[var(--app-banner-height)]
     // (see layout.tsx) already reserves that space for every page. Adding it again here
     // would double-count the notch inset on top of what body already reserves.
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative overflow-hidden">
+    <main className="min-h-screen bg-chalk dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative overflow-hidden">
 
       {/* Pull-to-Refresh Indicator - tracks the drag gesture detected on the window */}
       <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isPullRefreshing} threshold={pullThreshold} />
