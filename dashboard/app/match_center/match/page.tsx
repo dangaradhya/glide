@@ -100,24 +100,32 @@ function MatchDetail() {
       setLoaded(true);
       return;
     }
+    // The summary proxies ESPN live and can take seconds on a cache miss, while the
+    // match row is a local DB read answering in milliseconds - so the page paints as
+    // soon as the row lands and the box score hydrates whenever it arrives, instead
+    // of holding the spinner for both (the last source of long spinner holds here).
+    // Sentinel semantics preserve the old error behavior exactly: a non-ok summary
+    // clears the box score (404 = genuinely none), a network failure keeps whatever
+    // was already rendered for the next poll to retry.
+    const summaryPromise = fetch(`${API_BASE_URL}/api/matches/${encodeURIComponent(matchId)}/summary`)
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => undefined);
+
     try {
-      // The summary 404s for sports without a box score - fetched alongside the
-      // match row, never gating it.
-      const [matchRes, summaryRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/matches/${encodeURIComponent(matchId)}`),
-        fetch(`${API_BASE_URL}/api/matches/${encodeURIComponent(matchId)}/summary`),
-      ]);
+      const matchRes = await fetch(`${API_BASE_URL}/api/matches/${encodeURIComponent(matchId)}`);
       if (matchRes.ok) {
         setMatch(await matchRes.json());
       } else if (matchRes.status === 404) {
         setNotFound(true);
       }
-      setSummary(summaryRes.ok ? await summaryRes.json() : null);
     } catch {
       // Keep whatever was already rendered; the next poll retries.
     } finally {
       setLoaded(true);
     }
+
+    const summaryResult = await summaryPromise;
+    if (summaryResult !== undefined) setSummary(summaryResult);
   }, [matchId]);
 
   // Initial load + a 30s visibility-aware refresh, so a live game's score, clock,
