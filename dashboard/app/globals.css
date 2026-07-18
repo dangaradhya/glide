@@ -16,7 +16,7 @@
   --color-signal: #A855F7;  /* hover, dark-mode accent lift */
   --color-live: #22C55E;    /* live states (existing green) */
   --color-ink: #0B0A12;     /* dark ground, violet-biased near-black */
-  --color-chalk: #F8F8FB;   /* light ground, violet-biased near-white */
+  --color-chalk: #FAF7F1;   /* light ground, warm cream - softer on the eyes than pure white, restrained enough not to fight the purple */
 }
 
 /* Tell Tailwind v4 to trigger 'dark:' classes when our toggle button clicks! */

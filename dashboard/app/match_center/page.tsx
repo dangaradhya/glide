@@ -498,7 +498,7 @@ export default function LiveUpdatesPage() {
     // No extra top padding needed here for the notch - <body>'s pt-[var(--app-banner-height)]
     // (see layout.tsx) already reserves that space for every page. Adding it again here
     // would double-count the notch inset on top of what body already reserves.
-    <main className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
+    <main className="min-h-screen bg-chalk dark:bg-gray-950 text-gray-900 dark:text-white p-4 md:p-8 relative">
 
       {/* Bottom padding clears the mobile bottom nav bar. Grows by the safe-area inset (same
           var used on the nav bar below) for the same reason the nav bar itself does.
