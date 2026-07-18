@@ -84,6 +84,19 @@ function defaultVisibleDayKeys(groups: DayGroup[]): Set<string> {
   return keys;
 }
 
+// Sub-group one day's rows by tournament, preserving row order (rows arrive
+// live-first, so tournaments with live matches surface first too). Team-sport rows
+// have no tournament and come back as a single label-less group.
+function groupByTournament(rows: Match[]): { tournament: string | null; rows: Match[] }[] {
+  const byName = new Map<string | null, Match[]>();
+  for (const row of rows) {
+    const key = row.tournament || null;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key)!.push(row);
+  }
+  return [...byName.entries()].map(([tournament, rows]) => ({ tournament, rows }));
+}
+
 function formatKickoffTime(startTime: string): string {
   const start = parseUtc(startTime);
   if (isNaN(start.getTime())) return '';
@@ -215,7 +228,7 @@ function LeagueScoreboardCard({
   const hiddenCount = matches.length - visibleGroups.reduce((n, g) => n + rowsFor(g).length, 0);
 
   return (
-    <div className="flex flex-col self-start rounded-xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
+    <div className="flex flex-col break-inside-avoid mb-4 md:mb-6 rounded-xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
       <a
         href={league.url}
         target="_blank"
@@ -253,11 +266,25 @@ function LeagueScoreboardCard({
               {group.label}
             </span>
           </div>
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {rowsFor(group).map(match => (
-              <MatchRow key={match.id} match={match} />
-            ))}
-          </div>
+          {/* Within a day, rows sub-group by tournament when they carry one (tennis
+              draws, cricket series) - this is what un-jumbles men's/women's tennis.
+              Team-sport rows have no tournament and render exactly as before. */}
+          {groupByTournament(rowsFor(group)).map(tg => (
+            <div key={tg.tournament ?? 'no-tournament'}>
+              {tg.tournament && (
+                <div className="px-4 pt-2 pb-1">
+                  <span className="font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-widest text-court dark:text-signal/90 line-clamp-1">
+                    {tg.tournament}
+                  </span>
+                </div>
+              )}
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {tg.rows.map(match => (
+                  <MatchRow key={match.id} match={match} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       ))}
 
@@ -281,7 +308,7 @@ function OutboundLeagueCard({ league }: { league: League }) {
       href={league.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group relative overflow-hidden rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 self-start"
+      className="group relative block break-inside-avoid mb-4 md:mb-6 overflow-hidden rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
     >
       {/* Dynamic Gradient Background based on League colors */}
       <div className={`absolute inset-0 bg-gradient-to-br ${league.color} opacity-90 group-hover:opacity-100 transition-opacity`}></div>
@@ -626,7 +653,11 @@ export default function LiveUpdatesPage() {
             </button>
           </div>
 
-          <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 items-start bg-gray-50 dark:bg-gray-950/40">
+          {/* CSS-columns masonry instead of a grid: league cards vary wildly in height
+              (an outbound UFC tile vs a week of World Cup fixtures), and grid rows
+              stretch to the tallest card, leaving big voids under the short ones.
+              Columns pack cards top-to-bottom with no holes. Mobile stays one column. */}
+          <div className="p-4 md:p-6 columns-1 md:columns-2 lg:columns-3 gap-4 md:gap-6 bg-gray-50 dark:bg-gray-950/40">
             {activeLeagueData.map(league => {
               const freshMatches = freshMatchesFor(league.id);
               return freshMatches ? (

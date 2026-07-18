@@ -25,6 +25,8 @@ interface MatchSummary {
   home: { linescores: string[]; record: string | null };
   away: { linescores: string[]; record: string | null };
   stats: { label: string; home: string; away: string }[];
+  // Soccer only - other sports omit the field entirely
+  scorers?: { name: string; minute: string; team: 'home' | 'away'; penalty: boolean; ownGoal: boolean }[];
   venue: string | null;
   attendance: number | null;
 }
@@ -178,9 +180,15 @@ function MatchDetail() {
           <div className={`absolute inset-0 bg-gradient-to-br ${league?.color ?? 'from-gray-700 to-gray-900'}`}></div>
           <div className="relative px-4 pt-4 pb-6 md:px-8">
             <div className="flex items-center justify-between gap-3 mb-6">
-              <span className="font-display font-stretch-[72%] text-[11px] uppercase tracking-widest text-white/80 font-bold">
-                {league?.name ?? match.league_id}
-              </span>
+              <div className="min-w-0">
+                <span className="font-display font-stretch-[72%] text-[11px] uppercase tracking-widest text-white/80 font-bold block">
+                  {league?.name ?? match.league_id}
+                </span>
+                {/* Tennis/cricket context: which tournament, draw, or series this is */}
+                {match.tournament && (
+                  <span className="text-[11px] text-white/70 block truncate">{match.tournament}</span>
+                )}
+              </div>
               {league && (
                 <a
                   href={league.url}
@@ -245,6 +253,32 @@ function MatchDetail() {
             )}
           </div>
         </div>
+
+        {/* Goalscorers (soccer): who scored and when, split under each team's side.
+            (P) = penalty, (OG) = own goal. */}
+        {summary?.scorers && summary.scorers.length > 0 && (
+          <div className="px-4 py-3 md:px-8 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/40">
+            <div className="flex justify-between gap-6 text-[13px] text-gray-700 dark:text-gray-300">
+              <div className="flex-1 space-y-1">
+                {summary.scorers.filter(s => s.team === 'home').map((s, i) => (
+                  <p key={i} className="tabular-nums">
+                    {s.name} <span className="text-gray-400 dark:text-gray-500">{s.minute}{s.penalty ? ' (P)' : ''}{s.ownGoal ? ' (OG)' : ''}</span>
+                  </p>
+                ))}
+              </div>
+              <span className="shrink-0 font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 pt-0.5" aria-hidden="true">
+                Goals
+              </span>
+              <div className="flex-1 space-y-1 text-right">
+                {summary.scorers.filter(s => s.team === 'away').map((s, i) => (
+                  <p key={i} className="tabular-nums">
+                    <span className="text-gray-400 dark:text-gray-500">{s.minute}{s.penalty ? ' (P)' : ''}{s.ownGoal ? ' (OG)' : ''}</span> {s.name}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Linescore: per-period/inning/half breakdown when the box score has one */}
         {summary && linescoreCols > 0 && (
