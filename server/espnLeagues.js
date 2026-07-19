@@ -40,4 +40,23 @@ const ESPN_LEAGUES = [
     { league_id: 'ufc', sport: 'mma', slug: 'ufc' },
 ];
 
-module.exports = { ESPN_LEAGUES };
+// How a finished UFC fight ended, from the fight's details stream - the one
+// "Unofficial Winner <Method>" entry is the only method signal in the scoreboard
+// feed. Observed raw values: "Submission", "Decision", and ESPN's mangled
+// "Kotko" (their KO/TKO label). Shared here because both the ingestion (main
+// event result line) and the summary route (bout-by-bout card) need it.
+function ufcFinishMethod(fight) {
+    const raw = (fight.details || [])
+        .map((d) => d.type?.text || '')
+        .find((t) => /^unofficial winner/i.test(t));
+    if (!raw) return null;
+    const method = raw.replace(/^unofficial winner\s*/i, '').trim();
+    if (/kotko|ko\/tko|knockout/i.test(method)) return 'KO/TKO';
+    if (/submission/i.test(method)) return 'Submission';
+    if (/decision/i.test(method)) return 'Decision';
+    if (/dq|disqualif/i.test(method)) return 'DQ';
+    if (/no contest/i.test(method)) return 'No Contest';
+    return method || null;
+}
+
+module.exports = { ESPN_LEAGUES, ufcFinishMethod };
