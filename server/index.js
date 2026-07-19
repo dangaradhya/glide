@@ -1507,6 +1507,11 @@ app.get('/api/matches/:id', (req, res) => {
 const matchSummaryCache = new Map(); // match id -> { expiresAt, status, body }
 const SUMMARY_CACHE_MS = 60 * 1000;
 
+// F1 race-time enrichment is a 22-call burst (one core-API call per driver), so it
+// caches longer than the summary itself - see the racing branch below.
+const racingTimesCache = new Map(); // race competition id -> { expiresAt, timesById }
+const RACING_TIMES_CACHE_MS = 5 * 60 * 1000;
+
 // Build a full cricket scorecard from ESPN's cricket summary. The complete per-player
 // figures live in rosters[].roster[].linescores (one entry per innings/period):
 // batting (runs, ballsFaced, fours, sixes, strikeRate, battingPosition, dismissalCard)
@@ -1732,6 +1737,55 @@ app.get('/api/matches/:id/summary', (req, res) => {
                 if (sessions.length === 0) {
                     return respond(404, { error: 'No results available for this event' });
                 }
+
+                // F1 race times (founder-requested; race only - practice/quali stay
+                // position-only, and NASCAR is skipped outright since its time stats
+                // are all zeros in ESPN's data). The per-driver times live behind
+                // per-competitor core-API calls, so the 22-call burst gets its own
+                // 5-minute cache on top of the 60s summary cache: positions keep
+                // updating every poll during a live race, only the time gaps go up
+                // to 5 minutes stale - and after the flag they never change anyway.
+                const race = comps.find((c) => c.type?.abbreviation === 'Race');
+                const raceSession = race && sessions.find((s) => s.leaderboard.length > 0
+                    && s.label === (race.type?.text || race.type?.abbreviation || 'Session'));
+                if (row.series_id === 'f1' && race && raceSession && race.status?.type?.state !== 'pre') {
+                    const sortedCompetitors = [...(race.competitors || [])]
+                        .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
+                    let cached = racingTimesCache.get(String(race.id));
+                    if (!cached || cached.expiresAt <= Date.now()) {
+                        // "0.000"/".000"/empty mean ESPN hasn't filled the value
+                        const meaningful = (v) => (v && !/^[0:.]+$/.test(String(v)) ? String(v) : null);
+                        const timesById = {};
+                        await Promise.all(sortedCompetitors.map(async (c, idx) => {
+                            try {
+                                const statsUrl = `https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/${encodeURIComponent(eventId)}/competitions/${encodeURIComponent(race.id)}/competitors/${encodeURIComponent(c.id)}/statistics?lang=en`;
+                                const sres = await fetch(statsUrl);
+                                if (!sres.ok) return;
+                                const sjson = await sres.json();
+                                const stats = {};
+                                for (const cat of (sjson.splits?.categories || [])) {
+                                    for (const s of (cat.stats || [])) stats[s.name] = s.displayValue;
+                                }
+                                const total = meaningful(stats.totalTime);
+                                const behind = meaningful(stats.behindTime);
+                                // Winner shows the full race time; the field shows gaps
+                                timesById[c.id] = idx === 0
+                                    ? total
+                                    : (behind ? (behind.startsWith('+') ? behind : `+${behind}`) : total);
+                            } catch { /* that driver's time stays blank */ }
+                        }));
+                        cached = { expiresAt: Date.now() + RACING_TIMES_CACHE_MS, timesById };
+                        racingTimesCache.set(String(race.id), cached);
+                        for (const [key, entry] of racingTimesCache) {
+                            if (entry.expiresAt <= Date.now()) racingTimesCache.delete(key);
+                        }
+                    }
+                    sortedCompetitors.forEach((c, idx) => {
+                        const score = cached.timesById[c.id];
+                        if (score && raceSession.leaderboard[idx]) raceSession.leaderboard[idx].score = score;
+                    });
+                }
+
                 return respond(200, {
                     leaderboard: sessions[0].leaderboard,
                     round: [sessions[0].label, sessions[0].status].filter(Boolean).join(' · ') || null,
@@ -1859,11 +1913,42 @@ app.get('/api/matches/:id/summary', (req, res) => {
                     });
             }
 
+            // Soccer only: starting lineups from summary.rosters - formation, the XI
+            // ordered by formation place with jersey numbers, plus only the subs who
+            // actually came on (a full 15-man bench would drown the block). ESPN
+            // publishes lineups roughly an hour before kickoff; before that rosters
+            // are empty and the field is simply omitted.
+            let lineups;
+            if (league.sport === 'soccer') {
+                const buildSide = (r) => r && {
+                    formation: r.formation || null,
+                    starters: (r.roster || []).filter((p) => p.starter)
+                        .sort((a, b) => (Number(a.formationPlace) || 99) - (Number(b.formationPlace) || 99))
+                        .map((p) => ({
+                            name: p.athlete?.displayName || null,
+                            jersey: p.jersey || null,
+                            position: p.position?.abbreviation || null,
+                        })),
+                    subs: (r.roster || []).filter((p) => !p.starter && p.subbedIn)
+                        .map((p) => ({
+                            name: p.athlete?.displayName || null,
+                            jersey: p.jersey || null,
+                        })),
+                };
+                const rosters = summary.rosters || [];
+                const homeSide = buildSide(rosters.find((r) => r.homeAway === 'home'));
+                const awaySide = buildSide(rosters.find((r) => r.homeAway === 'away'));
+                if (homeSide?.starters?.length || awaySide?.starters?.length) {
+                    lineups = { home: homeSide || null, away: awaySide || null };
+                }
+            }
+
             respond(200, {
                 home: side(home),
                 away: side(away),
                 stats,
                 ...(scorers ? { scorers } : {}),
+                ...(lineups ? { lineups } : {}),
                 venue: summary.gameInfo?.venue?.fullName || null,
                 attendance: summary.gameInfo?.attendance || null,
             });
