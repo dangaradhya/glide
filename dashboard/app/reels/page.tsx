@@ -362,7 +362,7 @@ function ReelsContent() {
     // AUTH CHECK: Before allowing the user to like a reel, we check if they are authenticated by looking for a token in localStorage.
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      setSignInPrompt(SIGN_IN_PROMPTS.like);
+      setSignInPrompt(SIGN_IN_PROMPTS.likeReels);
       return;
     }
 
@@ -428,7 +428,7 @@ function ReelsContent() {
     // If they are not logged in, we alert them and exit the function.
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      setSignInPrompt(SIGN_IN_PROMPTS.save);
+      setSignInPrompt(SIGN_IN_PROMPTS.saveReels);
       return;
     }
 
@@ -536,8 +536,11 @@ function ReelsContent() {
     e.preventDefault();
     if (!newCommentText.trim() || !activeReel) return;
 
+    // Signed-out users never see this form - the drawer footer shows "Sign in
+    // to join the conversation" instead - so a missing token here is just
+    // stale state and a silent no-op, not worth a popup.
     const token = localStorage.getItem('glide_token');
-    if (!token) return setSignInPrompt(SIGN_IN_PROMPTS.comment);
+    if (!token) return;
 
     // OPTIMISTIC UI UPDATE: We immediately add the new comment to the comments state to reflect it in the UI for instant feedback.
     try {

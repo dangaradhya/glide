@@ -23,14 +23,23 @@ export interface SignInPromptContent {
 }
 
 // The standard gate messages, shared so Posts/Reels/Match Center phrase them
-// identically. Session-expired callers clear storage themselves first - this
-// component never touches auth state.
+// identically. Like/save name their surface ("...like posts", "...like reels")
+// so the title reads complete on its own. No comment prompt: the signed-out
+// comment drawer already swaps its input for "Sign in to join the
+// conversation", which says it all in place. Session-expired callers clear
+// storage themselves first - this component never touches auth state.
 export const SIGN_IN_PROMPTS = {
-  like: { title: 'Sign in to like', body: 'Likes live in your Vault, so you can always find your way back to them.' },
-  save: { title: 'Sign in to save', body: 'Saved posts and reels live in your Vault, ready when you are.' },
-  comment: { title: 'Sign in to comment', body: 'Drop your take once you’re signed in.' },
+  likePosts: { title: 'Sign in to like posts', body: 'Likes live in your Vault, so you can always find your way back to them.' },
+  savePosts: { title: 'Sign in to save posts', body: 'Saved posts live in your Vault, ready when you are.' },
+  likeReels: { title: 'Sign in to like reels', body: 'Likes live in your Vault, so you can always find your way back to them.' },
+  saveReels: { title: 'Sign in to save reels', body: 'Saved reels live in your Vault, ready when you are.' },
   expired: { title: 'Session expired', body: 'Sign in again to pick up where you left off.' },
 } satisfies Record<string, SignInPromptContent>;
+
+// Set just before a signInHref navigation so the destination's AuthButton
+// opens the sign-in modal on arrival instead of stranding the user on the
+// home feed wondering what happened.
+export const OPEN_AUTH_ON_LOAD_KEY = 'glide_open_auth_on_load';
 
 export default function SignInPrompt({ prompt, onClose, signInHref }: {
   prompt: SignInPromptContent | null;
@@ -51,6 +60,7 @@ export default function SignInPrompt({ prompt, onClose, signInHref }: {
 
   const handleSignIn = () => {
     if (signInHref) {
+      try { sessionStorage.setItem(OPEN_AUTH_ON_LOAD_KEY, '1'); } catch { /* private mode - plain nav still works */ }
       window.location.href = signInHref;
       return;
     }

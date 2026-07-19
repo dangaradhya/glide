@@ -330,7 +330,7 @@ export default function Home() {
   const handleLike = async (id: number) => {
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      setSignInPrompt(SIGN_IN_PROMPTS.like);
+      setSignInPrompt(SIGN_IN_PROMPTS.likePosts);
       return;
     }
 
@@ -395,7 +395,7 @@ export default function Home() {
     // We check for the token, toggle the bookmark icon immediately, and then confirm with the backend.
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      setSignInPrompt(SIGN_IN_PROMPTS.save);
+      setSignInPrompt(SIGN_IN_PROMPTS.savePosts);
       return;
     }
 
@@ -498,8 +498,11 @@ export default function Home() {
     e.preventDefault();
     if (!newCommentText.trim() || !activePost) return;
 
+    // Signed-out users never see this form - the drawer footer shows "Sign in
+    // to join the conversation" instead - so a missing token here is just
+    // stale state and a silent no-op, not worth a popup.
     const token = localStorage.getItem('glide_token');
-    if (!token) return setSignInPrompt(SIGN_IN_PROMPTS.comment);
+    if (!token) return;
 
     // We make a POST request to submit the new comment to the backend. The body of the request includes the comment text, and we attach the token for authentication.
     try {
