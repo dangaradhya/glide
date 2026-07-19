@@ -64,8 +64,16 @@ interface MatchSummary {
   sessions?: SessionData[];
   // UFC only - the bout-by-bout fight card, main event first
   fights?: FightData[];
+  // Soccer only - starting XIs; absent until ESPN publishes them (~1h pre-kickoff)
+  lineups?: { home: LineupSide | null; away: LineupSide | null };
   venue?: string | null;
   attendance?: number | null;
+}
+interface LineupSide {
+  formation: string | null;
+  starters: { name: string | null; jersey: string | null; position: string | null }[];
+  // Only subs who actually came on
+  subs: { name: string | null; jersey: string | null }[];
 }
 interface SessionData {
   label: string;
@@ -401,6 +409,58 @@ function FightCard({ fights }: { fights: FightData[] }) {
   );
 }
 
+// Soccer starting XIs, home left / away right: formation under each team name,
+// the XI in formation order with jersey numbers, subs-used beneath in smaller
+// text. Names truncate inside their column - the block never widens the page.
+function Lineups({ lineups, homeName, awayName }: {
+  lineups: NonNullable<MatchSummary['lineups']>;
+  homeName: string | null;
+  awayName: string | null;
+}) {
+  const side = (s: LineupSide | null, name: string | null, alignRight: boolean) => (
+    <div className={`flex-1 min-w-0 ${alignRight ? 'text-right' : ''}`}>
+      <p className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-widest text-gray-700 dark:text-gray-200 truncate">
+        {name}
+      </p>
+      {s?.formation && (
+        <p className="text-[11px] tabular-nums text-gray-400 dark:text-gray-500 mb-1.5">{s.formation}</p>
+      )}
+      <ul className="space-y-1 text-[13px] text-gray-700 dark:text-gray-300">
+        {(s?.starters || []).map((p, i) => (
+          <li key={i} className="truncate">
+            {alignRight ? (
+              <>{p.name} <span className="text-gray-400 dark:text-gray-500 tabular-nums">{p.jersey}</span></>
+            ) : (
+              <><span className="text-gray-400 dark:text-gray-500 tabular-nums">{p.jersey}</span> {p.name}</>
+            )}
+          </li>
+        ))}
+      </ul>
+      {(s?.subs?.length ?? 0) > 0 && (
+        <ul className="mt-2 space-y-1 text-xs text-gray-400 dark:text-gray-500">
+          {s!.subs.map((p, i) => (
+            <li key={i} className="truncate">
+              {alignRight ? <>{p.name} <span aria-hidden="true">⇄</span></> : <><span aria-hidden="true">⇄</span> {p.name}</>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="px-4 py-3 md:px-8 border-b border-gray-100 dark:border-gray-800">
+      <p className="font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 text-center mb-2.5">
+        Lineups
+      </p>
+      <div className="flex justify-between gap-6">
+        {side(lineups.home, homeName, false)}
+        {side(lineups.away, awayName, true)}
+      </div>
+    </div>
+  );
+}
+
 function MatchDetail() {
   const searchParams = useSearchParams();
   const matchId = searchParams.get('id');
@@ -640,6 +700,11 @@ function MatchDetail() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Soccer starting XIs, once ESPN publishes them */}
+        {summary?.lineups && (
+          <Lineups lineups={summary.lineups} homeName={match.home_team} awayName={match.away_team} />
         )}
 
         {/* Cricket scorecard: innings-by-innings batting and bowling cards */}

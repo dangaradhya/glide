@@ -508,7 +508,7 @@ export default function ProfileVault() {
       {showScrollTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-6 right-6 md:bottom-10 md:right-10 bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 z-50 group"
+          className="fixed bottom-[calc(5rem_+_var(--app-safe-bottom))] right-6 md:bottom-10 md:right-10 bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 z-50 group"
           aria-label="Scroll to top"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:-translate-y-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
