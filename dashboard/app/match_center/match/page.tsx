@@ -71,7 +71,9 @@ interface MatchSummary {
 }
 interface LineupSide {
   formation: string | null;
-  starters: { name: string | null; jersey: string | null; position: string | null }[];
+  // place = ESPN formationPlace; older backend payloads omit it, but starters
+  // arrive sorted by it, so index+1 recovers it during deploy skew
+  starters: { name: string | null; jersey: string | null; position: string | null; place?: number | null }[];
   // Only subs who actually came on
   subs: { name: string | null; jersey: string | null }[];
 }
@@ -409,18 +411,34 @@ function FightCard({ fights }: { fights: FightData[] }) {
   );
 }
 
-// ESPN's formationPlace is the classic shirt-number scheme (1 GK, 2 RB, 4 the
-// DM/pivot, 9 the striker, 11 LM...), NOT a row-by-row slot order. position.abbreviation
-// (RB, CD-L, DM, AM-R, F...) is the ground truth for which line a player is in.
-// Band index per abbreviation: 0 GK, then defence → DM → midfield → AM → attack.
+// ESPN's formationPlace is the classic shirt-number scheme (1 GK, 2 RB, 4/8
+// central mids, 9 the striker, 7/11 the wide men...), applied per formation -
+// NOT a row-by-row slot order. These templates map each known formation's
+// places onto pitch rows, right-to-left within a line. The first three were
+// observed directly in granular ESPN rosters (CD-R/RM/CM-L... abbreviations
+// pin each place to a line); 4-3-3 and 4-5-1 are constructed from the same
+// classic numbering (back four always 2-5-6-3, 7/11 wide, 9 the striker).
+// Templates are what keep lineups right when ESPN publishes only generic
+// G/D/M/F position letters (as it did for the 2026 World Cup final).
+const FORMATION_TEMPLATES: Record<string, number[][]> = {
+  '4-4-2': [[1], [2, 5, 6, 3], [7, 4, 8, 11], [9, 10]],      // observed
+  '4-2-3-1': [[1], [2, 5, 6, 3], [8, 4], [7, 10, 11], [9]],  // observed
+  '4-1-4-1': [[1], [2, 5, 6, 3], [4], [7, 8, 10, 11], [9]],  // observed
+  '4-3-3': [[1], [2, 5, 6, 3], [8, 4, 10], [7, 9, 11]],      // constructed
+  '4-5-1': [[1], [2, 5, 6, 3], [7, 8, 4, 10, 11], [9]],      // constructed
+};
+
+// Band index per position abbreviation: 0 GK, then defence → DM → midfield →
+// AM → attack. Bare D/M/F/A letters appear when ESPN doesn't publish granular
+// roles. Used when no formation template matches.
 function positionBand(pos: string): number | null {
   const p = pos.toUpperCase();
   if (p === 'G' || p === 'GK') return 0;
-  if (/^(RB|LB|CB|CD|SW|RWB|LWB|WB)(-[RL])?$/.test(p)) return 1;
+  if (/^(D|RB|LB|CB|CD|SW|RWB|LWB|WB)(-[RL])?$/.test(p)) return 1;
   if (/^C?DM(-[RL])?$/.test(p)) return 2;
   if (/^(M|CM|RM|LM)(-[RL])?$/.test(p)) return 3;
   if (/^C?AM(-[RL])?$/.test(p)) return 4;
-  if (/^(F|CF|ST|LW|RW|LF|RF)(-[RL])?$/.test(p)) return 5;
+  if (/^(A|F|CF|ST|LW|RW|LF|RF)(-[RL])?$/.test(p)) return 5;
   return null;
 }
 
@@ -435,14 +453,29 @@ function sideRank(pos: string): number {
   return 2;
 }
 
-// Group a starting XI into pitch rows: one row per position band when every
-// starter has a recognizable position (with exactly one GK and no implausibly
-// wide line). Otherwise fall back to slicing the formationPlace order by the
-// formation string ("4-2-3-1" -> [4, 2, 3, 1]), then to rows of <=4, so the
-// pitch never breaks.
+// Group a starting XI into pitch rows. Preference order:
+// 1. Formation template: place each player by formationPlace using the known
+//    slot layout for that formation - immune to generic position letters.
+// 2. Position bands: one row per band when every starter has a recognizable
+//    position (exactly one GK, no implausibly wide line).
+// 3. Slice the formationPlace order by the formation string, then rows of
+//    <=4, so the pitch never breaks.
 function formationRows(side: LineupSide, home: boolean): LineupSide['starters'][] {
   const starters = side.starters;
   if (starters.length === 0) return [];
+
+  const template = side.formation ? FORMATION_TEMPLATES[side.formation] : undefined;
+  if (template && starters.length === 11) {
+    // Older backends omit place, but starters arrive sorted by formationPlace,
+    // so index+1 recovers it
+    const byPlace = new Map<number, LineupSide['starters'][0]>();
+    starters.forEach((p, i) => byPlace.set(p.place ?? i + 1, p));
+    const wanted = template.flat();
+    if (wanted.every((pl) => byPlace.has(pl)) && byPlace.size === 11) {
+      const rows = template.map((row) => row.map((pl) => byPlace.get(pl) as LineupSide['starters'][0]));
+      return home ? rows.map((row) => [...row].reverse()) : rows;
+    }
+  }
 
   const bands: LineupSide['starters'][] = [[], [], [], [], [], []];
   let unknown = false;
