@@ -29,7 +29,7 @@ const MATCHES_API_URL = `http://127.0.0.1:${PORT}/api/matches`;
 // The league_id -> ESPN (sport, slug) map lives in espnLeagues.js so the box-score
 // summary route in index.js can share it without require()ing this file's cron
 // side effects. See that file for the tennis-two-tours and verified-slugs notes.
-const { ESPN_LEAGUES } = require('./espnLeagues');
+const { ESPN_LEAGUES, ufcFinishMethod } = require('./espnLeagues');
 
 // The fixtures sweep window: how far back and forward the hourly date-range fetch
 // reaches. Backward covers "last matchday" on the frontend (and must stay under
@@ -256,7 +256,10 @@ function normalizeEspnMmaEvent(event, league_id) {
     if (main && main.status?.type?.state === 'post') {
         const win = (main.competitors || []).find((c) => c.winner);
         const lose = (main.competitors || []).find((c) => !c.winner);
-        if (win && lose) mainResult = `Main event: ${fighterName(win)} def. ${fighterName(lose)}`;
+        if (win && lose) {
+            const method = ufcFinishMethod(main);
+            mainResult = `Main event: ${fighterName(win)} def. ${fighterName(lose)}${method ? ` (${method})` : ''}`;
+        }
     }
     const done = fights.filter((f) => f.status?.type?.state === 'post').length;
 

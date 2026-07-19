@@ -56,16 +56,28 @@ interface MatchSummary {
   scorers?: { name: string; minute: string; team: 'home' | 'away'; penalty: boolean; ownGoal: boolean }[];
   // Cricket only - the full scorecard
   innings?: CricketInningsData[];
-  // Golf/racing - the event leaderboard + ESPN's round/session status line
+  // Golf/racing - the headline leaderboard + ESPN's round/session status line
   leaderboard?: GolfLeaderboardRow[];
   round?: string | null;
+  // Racing only - every session with results (Race first, then Qual, FP3...),
+  // the headline one duplicated in leaderboard/round above
+  sessions?: SessionData[];
   // UFC only - the bout-by-bout fight card, main event first
   fights?: FightData[];
   venue?: string | null;
   attendance?: number | null;
 }
+interface SessionData {
+  label: string;
+  status: string | null;
+  leaderboard: GolfLeaderboardRow[];
+}
 interface FightData {
   status: 'live' | 'final' | 'scheduled';
+  // How and when a finished bout ended ("Submission", round 1, "1:40")
+  method?: string | null;
+  round?: number | null;
+  clock?: string | null;
   fighters: { name: string | null; record: string | null; flag: string | null; winner: boolean }[];
 }
 
@@ -153,7 +165,7 @@ function InningsCard({ innings }: { innings: CricketInningsData }) {
 
       {innings.batting.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px] min-w-[430px]">
+          <table className="w-full text-[13px] min-w-[520px]">
             <thead>
               <tr className="font-display font-stretch-[72%] text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
                 <th className="text-left font-bold px-4 py-2">Batter</th>
@@ -214,17 +226,92 @@ function InningsCard({ innings }: { innings: CricketInningsData }) {
   );
 }
 
-// Event leaderboard, shared by golf and racing: position, competitor (with country
-// flag), and - when the sport has them - per-round strokes and a score-to-par total
-// (racing exposes finishing order only, so those columns hide themselves). Top 20
-// collapsed - a golf field is 150+ players - with the same horizontal-scroll
-// containment as the cricket tables. Under-par golf totals get golf's conventional red.
+// The leaderboard table itself, shared by golf and racing: position, competitor
+// (with country flag), and - when the sport has them - per-round strokes and a
+// score-to-par total (racing exposes finishing order only, so those columns hide
+// themselves). Horizontal-scroll containment like the cricket tables; under-par
+// golf totals get golf's conventional red. Column layout derives from `all` (the
+// full row set) so it can't shift when a collapsed slice is passed as `rows`.
+function LeaderboardTable({ rows, all }: { rows: GolfLeaderboardRow[]; all: GolfLeaderboardRow[] }) {
+  const roundCols = all.reduce((n, r) => Math.max(n, r.rounds.length), 0);
+  const hasTotals = all.some(r => r.score != null);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[13px] min-w-[360px]">
+        <thead>
+          <tr className="font-display font-stretch-[72%] text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            <th className="text-left font-bold px-4 py-2 w-10">Pos</th>
+            <th className="text-left font-bold px-2 py-2">Player</th>
+            {Array.from({ length: roundCols }, (_, i) => (
+              <th key={i} className="font-bold px-2 py-2 text-right w-10">R{i + 1}</th>
+            ))}
+            {hasTotals && <th className="font-bold px-4 py-2 text-right w-14">Total</th>}
+          </tr>
+        </thead>
+        <tbody className="tabular-nums">
+          {rows.map((p, i) => (
+            <tr key={i} className="border-t border-gray-50 dark:border-gray-800/60">
+              <td className="px-4 py-1.5 text-gray-500 dark:text-gray-400">{p.position ?? '-'}</td>
+              <td className="px-2 py-1.5 font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
+                {p.flag && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.flag} alt="" className="inline-block w-4 h-3 object-cover rounded-[2px] mr-1.5 align-[-1px]" loading="lazy" />
+                )}
+                {p.name}
+              </td>
+              {Array.from({ length: roundCols }, (_, ri) => (
+                <td key={ri} className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">
+                  {p.rounds[ri] ?? '-'}
+                </td>
+              ))}
+              {hasTotals && (
+                <td className={`px-4 py-1.5 text-right font-bold ${p.score?.startsWith('-') ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                  {p.score ?? '-'}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Racing sessions, importance-first (Race, Qual, FP3...): the headline session
+// renders open, the rest sit behind tap-to-expand headers so an F1 weekend isn't
+// five full 22-row tables at once.
+function RacingSessions({ sessions }: { sessions: SessionData[] }) {
+  const [open, setOpen] = useState<Record<number, boolean>>({ 0: true });
+  return (
+    <div className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+      {sessions.map((session, i) => (
+        <div key={i}>
+          <button
+            onClick={() => setOpen(prev => ({ ...prev, [i]: !prev[i] }))}
+            className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-950/40 flex items-center justify-between gap-3 hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors border-t border-gray-100 dark:border-gray-800 first:border-t-0"
+            aria-expanded={!!open[i]}
+          >
+            <span className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+              {session.label}
+            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 truncate">
+              {session.status}{' '}
+              <span aria-hidden="true">{open[i] ? '▾' : '▸'}</span>
+            </span>
+          </button>
+          {open[i] && <LeaderboardTable rows={session.leaderboard} all={session.leaderboard} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Golf leaderboard: header band + the shared table, top 20 collapsed - a golf
+// field is 150+ players.
 const GOLF_COLLAPSED_ROWS = 20;
 function GolfLeaderboard({ leaderboard, round }: { leaderboard: GolfLeaderboardRow[]; round?: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? leaderboard : leaderboard.slice(0, GOLF_COLLAPSED_ROWS);
-  const roundCols = leaderboard.reduce((n, r) => Math.max(n, r.rounds.length), 0);
-  const hasTotals = leaderboard.some(r => r.score != null);
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
@@ -237,44 +324,7 @@ function GolfLeaderboard({ leaderboard, round }: { leaderboard: GolfLeaderboardR
         )}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-[13px] min-w-[360px]">
-          <thead>
-            <tr className="font-display font-stretch-[72%] text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              <th className="text-left font-bold px-4 py-2 w-10">Pos</th>
-              <th className="text-left font-bold px-2 py-2">Player</th>
-              {Array.from({ length: roundCols }, (_, i) => (
-                <th key={i} className="font-bold px-2 py-2 text-right w-10">R{i + 1}</th>
-              ))}
-              {hasTotals && <th className="font-bold px-4 py-2 text-right w-14">Total</th>}
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {rows.map((p, i) => (
-              <tr key={i} className="border-t border-gray-50 dark:border-gray-800/60">
-                <td className="px-4 py-1.5 text-gray-500 dark:text-gray-400">{p.position ?? '-'}</td>
-                <td className="px-2 py-1.5 font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
-                  {p.flag && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.flag} alt="" className="inline-block w-4 h-3 object-cover rounded-[2px] mr-1.5 align-[-1px]" loading="lazy" />
-                  )}
-                  {p.name}
-                </td>
-                {Array.from({ length: roundCols }, (_, ri) => (
-                  <td key={ri} className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">
-                    {p.rounds[ri] ?? '-'}
-                  </td>
-                ))}
-                {hasTotals && (
-                  <td className={`px-4 py-1.5 text-right font-bold ${p.score?.startsWith('-') ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-                    {p.score ?? '-'}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <LeaderboardTable rows={rows} all={leaderboard} />
 
       {leaderboard.length > GOLF_COLLAPSED_ROWS && (
         <button
@@ -315,6 +365,12 @@ function FightCard({ fights }: { fights: FightData[] }) {
               )}
             </span>
           );
+          // How it ended: "Submission · R1 1:40", "Decision · R3 5:00" - falls
+          // back to plain "Final" when ESPN didn't carry the method
+          const resultLabel = fight.status === 'final'
+            ? [fight.method, fight.round != null && fight.clock ? `R${fight.round} ${fight.clock}` : null]
+                .filter(Boolean).join(' · ') || 'Final'
+            : fight.status === 'live' ? 'Live' : 'Upcoming';
           return (
             <div key={i} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
@@ -333,8 +389,8 @@ function FightCard({ fights }: { fights: FightData[] }) {
                 {fight.status === 'live' && (
                   <span className="inline-flex rounded-full h-1.5 w-1.5 bg-red-500 animate-pulse motion-reduce:animate-none" aria-hidden="true"></span>
                 )}
-                <span className={`font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-wider ${fight.status === 'live' ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                  {fight.status === 'final' ? 'Final' : fight.status === 'live' ? 'Live' : 'Upcoming'}
+                <span className={`font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-wider text-right ${fight.status === 'live' ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                  {resultLabel}
                 </span>
               </span>
             </div>
@@ -595,10 +651,14 @@ function MatchDetail() {
           </div>
         )}
 
-        {/* Golf/racing leaderboard: the whole point of those detail pages */}
-        {summary?.leaderboard && summary.leaderboard.length > 0 && (
+        {/* Racing: every session with results (Race open, others tap-to-expand);
+            golf keeps the single top-20 leaderboard. sessions wins when present -
+            its first entry IS the top-level leaderboard */}
+        {summary?.sessions && summary.sessions.length > 0 ? (
+          <RacingSessions sessions={summary.sessions} />
+        ) : summary?.leaderboard && summary.leaderboard.length > 0 ? (
           <GolfLeaderboard leaderboard={summary.leaderboard} round={summary.round} />
-        )}
+        ) : null}
 
         {/* UFC fight card, bout by bout */}
         {summary?.fights && summary.fights.length > 0 && (

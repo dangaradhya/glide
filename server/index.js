@@ -18,7 +18,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const appleSignin = require('apple-signin-auth');
-const { ESPN_LEAGUES } = require('./espnLeagues'); // league_id -> ESPN (sport, slug), for the box-score summary route
+const { ESPN_LEAGUES, ufcFinishMethod } = require('./espnLeagues'); // league_id -> ESPN (sport, slug) + UFC finish-method parser, for the box-score summary route
 const { uploadProfilePicture } = require('./r2'); // R2 object storage for self-uploaded profile pictures (see Phase 4a)
 
 // 2. INITIALIZATION
@@ -1536,6 +1536,9 @@ function buildCricketInnings(summary) {
                     const inn = inningsFor(periodEntry.period);
                     if (Number(stats.batted) > 0) {
                         inn.battingTeam = inn.battingTeam || teamName;
+                        const out = line.statistics?.batting?.outDetails;
+                        const dismissalText = ((out?.shortText || '').trim() || out?.dismissalCard || stats.dismissalCard || '')
+                            .replace(/&dagger;/g, '†').replace(/&amp;/g, '&');
                         inn.batting.push({
                             name,
                             position: Number(stats.battingPosition) || 99,
@@ -1544,7 +1547,7 @@ function buildCricketInnings(summary) {
                             fours: stats.fours ?? '0',
                             sixes: stats.sixes ?? '0',
                             strikeRate: stats.strikeRate ?? '',
-                            dismissal: stats.dismissalCard || '',
+                            dismissal: dismissalText,
                         });
                     }
                     if (Number(stats.bowled) > 0) {
@@ -1704,27 +1707,35 @@ app.get('/api/matches/:id/summary', (req, res) => {
                 const json = await espnRes.json();
                 const event = (json.events || []).find((e) => String(e.id) === eventId);
                 const comps = event?.competitions || [];
-                const race = comps.find((c) => c.type?.abbreviation === 'Race') || comps[comps.length - 1];
-                const finished = (c) => c && c.status?.type?.state !== 'pre';
-                const session = finished(race) ? race : [...comps].reverse().find(finished);
-                const competitors = session?.competitors || [];
-                if (competitors.length === 0 || !competitors.some((c) => c.order != null)) {
-                    return respond(404, { error: 'No results available for this event' });
-                }
-                const leaderboard = [...competitors]
+                // Every session with results, importance-first: ESPN lists sessions
+                // chronologically (FP1..Race), so reversing puts Race/Qual on top.
+                // The headline session stays duplicated in the top-level
+                // leaderboard/round fields so already-open old clients keep working
+                // through a deploy.
+                const board = (c) => [...(c.competitors || [])]
                     .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
-                    .map((c) => ({
-                        position: c.order ?? null,
-                        name: c.athlete?.displayName || null,
-                        flag: c.athlete?.flag?.href || null,
+                    .map((competitor) => ({
+                        position: competitor.order ?? null,
+                        name: competitor.athlete?.displayName || null,
+                        flag: competitor.athlete?.flag?.href || null,
                         // Racing scoreboards expose finishing order only - no times
                         score: null,
                         rounds: [],
                     }));
+                const sessions = [...comps].reverse()
+                    .filter((c) => c.status?.type?.state !== 'pre' && (c.competitors || []).some((x) => x.order != null))
+                    .map((c) => ({
+                        label: c.type?.text || c.type?.abbreviation || 'Session',
+                        status: c.status?.type?.detail || null,
+                        leaderboard: board(c),
+                    }));
+                if (sessions.length === 0) {
+                    return respond(404, { error: 'No results available for this event' });
+                }
                 return respond(200, {
-                    leaderboard,
-                    round: [session.type?.text || session.type?.abbreviation, session.status?.type?.detail]
-                        .filter(Boolean).join(' · ') || null,
+                    leaderboard: sessions[0].leaderboard,
+                    round: [sessions[0].label, sessions[0].status].filter(Boolean).join(' · ') || null,
+                    sessions,
                 });
             } catch (fetchErr) {
                 console.error('Error fetching racing results:', fetchErr.message);
@@ -1757,17 +1768,25 @@ app.get('/api/matches/:id/summary', (req, res) => {
                 const event = (json.events || []).find((e) => String(e.id) === eventId);
                 const bouts = [...(event?.competitions || [])].reverse();
                 if (bouts.length === 0) return respond(404, { error: 'No fight card available for this event' });
-                const fights = bouts.map((f) => ({
-                    status: f.status?.type?.state === 'in' ? 'live'
-                        : f.status?.type?.state === 'post' ? 'final' : 'scheduled',
-                    fighters: (f.competitors || []).map((c) => ({
-                        name: c.athlete?.displayName || null,
-                        record: (c.records || []).find((r) => r.name === 'overall')?.summary
-                            || c.records?.[0]?.summary || null,
-                        flag: c.athlete?.flag?.href || null,
-                        winner: !!c.winner,
-                    })),
-                }));
+                const fights = bouts.map((f) => {
+                    const done = f.status?.type?.state === 'post';
+                    return {
+                        status: f.status?.type?.state === 'in' ? 'live' : done ? 'final' : 'scheduled',
+                        // How and when it ended: method from the details stream, round +
+                        // clock from the fight status ("Submission", R1, "1:40"; a
+                        // decision naturally reads R3/R5 5:00)
+                        method: done ? ufcFinishMethod(f) : null,
+                        round: done ? (f.status?.period ?? null) : null,
+                        clock: done ? (f.status?.displayClock || null) : null,
+                        fighters: (f.competitors || []).map((c) => ({
+                            name: c.athlete?.displayName || null,
+                            record: (c.records || []).find((r) => r.name === 'overall')?.summary
+                                || c.records?.[0]?.summary || null,
+                            flag: c.athlete?.flag?.href || null,
+                            winner: !!c.winner,
+                        })),
+                    };
+                });
                 return respond(200, { fights });
             } catch (fetchErr) {
                 console.error('Error fetching UFC fight card:', fetchErr.message);
