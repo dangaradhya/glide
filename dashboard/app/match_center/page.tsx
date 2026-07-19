@@ -13,7 +13,7 @@ import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 import Brand from '@/components/Brand';
 import TopTabs from '@/components/TopTabs';
-import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel, tournamentFilterKey } from '@/lib/leagues';
+import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel, tournamentFilterKey, SINGLE_ENTRY_LEAGUES } from '@/lib/leagues';
 
 // How stale a league's freshest row can be before the scoreboard card gives way to
 // the outbound-link card. Future fixtures are only re-upserted by the HOURLY sweep
@@ -587,12 +587,12 @@ export default function LiveUpdatesPage() {
 
   // Group match rows by league. Rows without both team names (ESPN emits these for
   // TBD/doubles tennis slots) can't be rendered and are dropped here rather than
-  // special-cased everywhere below. Golf is the exception: its rows are one-per-
-  // tournament with only home_team (the tournament name) filled, by design.
+  // special-cased everywhere below. Single-entry leagues (golf/F1/NASCAR/UFC) are
+  // the exception: one row per event with only home_team filled, by design.
   const matchesByLeague = useMemo(() => {
     const grouped = new Map<string, Match[]>();
     for (const match of matches) {
-      if (!match.home_team || (!match.away_team && match.league_id !== 'golf')) continue;
+      if (!match.home_team || (!match.away_team && !SINGLE_ENTRY_LEAGUES.has(match.league_id))) continue;
       const list = grouped.get(match.league_id);
       if (list) list.push(match);
       else grouped.set(match.league_id, [match]);

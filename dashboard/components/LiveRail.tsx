@@ -15,15 +15,16 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API_BASE_URL, apiFetch } from '@/lib/api';
-import { AVAILABLE_LEAGUES, Match, parseUtc, tournamentFilterKey } from '@/lib/leagues';
+import { AVAILABLE_LEAGUES, Match, parseUtc, tournamentFilterKey, SINGLE_ENTRY_LEAGUES } from '@/lib/leagues';
 
 const POLL_INTERVAL_MS = 60 * 1000; // matches Match Center's own polling cadence
 const MAX_ROWS = 8;
 const FILL_WINDOW_MS = 48 * 3600 * 1000;
 
 function railRows(rows: Match[], preferredLeagues: string[] | null): Match[] {
-  // Golf rows are one-per-tournament with only home_team filled, by design
-  let named = rows.filter(m => m.home_team && (m.away_team || m.league_id === 'golf'));
+  // Single-entry leagues (golf/F1/NASCAR/UFC) are one row per event with only
+  // home_team filled, by design
+  let named = rows.filter(m => m.home_team && (m.away_team || SINGLE_ENTRY_LEAGUES.has(m.league_id)));
   if (preferredLeagues && preferredLeagues.length > 0) {
     const filtered = named.filter(m => preferredLeagues.includes(m.league_id));
     if (filtered.length > 0) named = filtered;

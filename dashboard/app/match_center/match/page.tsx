@@ -56,11 +56,17 @@ interface MatchSummary {
   scorers?: { name: string; minute: string; team: 'home' | 'away'; penalty: boolean; ownGoal: boolean }[];
   // Cricket only - the full scorecard
   innings?: CricketInningsData[];
-  // Golf only - the tournament leaderboard + ESPN's round status line
+  // Golf/racing - the event leaderboard + ESPN's round/session status line
   leaderboard?: GolfLeaderboardRow[];
   round?: string | null;
+  // UFC only - the bout-by-bout fight card, main event first
+  fights?: FightData[];
   venue?: string | null;
   attendance?: number | null;
+}
+interface FightData {
+  status: 'live' | 'final' | 'scheduled';
+  fighters: { name: string | null; record: string | null; flag: string | null; winner: boolean }[];
 }
 
 // The scorecard endpoint only carries dismissal shorthand ('c', 'b', 'not out') -
@@ -208,15 +214,17 @@ function InningsCard({ innings }: { innings: CricketInningsData }) {
   );
 }
 
-// Golf leaderboard: position, player (with country flag), strokes per round,
-// score to par. Top 20 collapsed - a full field is 150+ players - with the same
-// horizontal-scroll containment as the cricket tables. Under-par totals get golf's
-// conventional red.
+// Event leaderboard, shared by golf and racing: position, competitor (with country
+// flag), and - when the sport has them - per-round strokes and a score-to-par total
+// (racing exposes finishing order only, so those columns hide themselves). Top 20
+// collapsed - a golf field is 150+ players - with the same horizontal-scroll
+// containment as the cricket tables. Under-par golf totals get golf's conventional red.
 const GOLF_COLLAPSED_ROWS = 20;
 function GolfLeaderboard({ leaderboard, round }: { leaderboard: GolfLeaderboardRow[]; round?: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const rows = expanded ? leaderboard : leaderboard.slice(0, GOLF_COLLAPSED_ROWS);
   const roundCols = leaderboard.reduce((n, r) => Math.max(n, r.rounds.length), 0);
+  const hasTotals = leaderboard.some(r => r.score != null);
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
@@ -238,7 +246,7 @@ function GolfLeaderboard({ leaderboard, round }: { leaderboard: GolfLeaderboardR
               {Array.from({ length: roundCols }, (_, i) => (
                 <th key={i} className="font-bold px-2 py-2 text-right w-10">R{i + 1}</th>
               ))}
-              <th className="font-bold px-4 py-2 text-right w-14">Total</th>
+              {hasTotals && <th className="font-bold px-4 py-2 text-right w-14">Total</th>}
             </tr>
           </thead>
           <tbody className="tabular-nums">
@@ -257,9 +265,11 @@ function GolfLeaderboard({ leaderboard, round }: { leaderboard: GolfLeaderboardR
                     {p.rounds[ri] ?? '-'}
                   </td>
                 ))}
-                <td className={`px-4 py-1.5 text-right font-bold ${p.score?.startsWith('-') ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-                  {p.score ?? '-'}
-                </td>
+                {hasTotals && (
+                  <td className={`px-4 py-1.5 text-right font-bold ${p.score?.startsWith('-') ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                    {p.score ?? '-'}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -274,6 +284,63 @@ function GolfLeaderboard({ leaderboard, round }: { leaderboard: GolfLeaderboardR
           {expanded ? `Show top ${GOLF_COLLAPSED_ROWS}` : `Show all ${leaderboard.length} players`}
         </button>
       )}
+    </div>
+  );
+}
+
+// UFC fight card: one row per bout, main event first (ESPN's own order). Finished
+// bouts read "winner def. loser" with the loser dimmed; live bouts get the pulsing
+// dot; upcoming ones a plain "vs". Records ride along in small text.
+function FightCard({ fights }: { fights: FightData[] }) {
+  return (
+    <div className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+      <div className="px-4 py-2 bg-gray-50 dark:bg-gray-950/40">
+        <span className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+          Fight card
+        </span>
+      </div>
+      <div className="divide-y divide-gray-50 dark:divide-gray-800/60">
+        {fights.map((fight, i) => {
+          const [a, b] = fight.status === 'final'
+            ? [...fight.fighters].sort((x, y) => (y.winner ? 1 : 0) - (x.winner ? 1 : 0))
+            : fight.fighters;
+          if (!a || !b) return null;
+          const fighter = (f: FightData['fighters'][0], dimmed: boolean) => (
+            <span className={`inline-flex items-baseline gap-1.5 min-w-0 ${dimmed ? 'opacity-50' : ''}`}>
+              <span className={`truncate ${f.winner ? 'font-bold text-gray-900 dark:text-white' : 'font-medium text-gray-800 dark:text-gray-100'}`}>
+                {f.name}
+              </span>
+              {f.record && (
+                <span className="text-[11px] tabular-nums text-gray-400 dark:text-gray-500 shrink-0">{f.record}</span>
+              )}
+            </span>
+          );
+          return (
+            <div key={i} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                {i === 0 && (
+                  <span className="font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-widest text-court dark:text-signal/90 mr-1 shrink-0">
+                    Main
+                  </span>
+                )}
+                {fighter(a, false)}
+                <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+                  {fight.status === 'final' ? 'def.' : 'vs'}
+                </span>
+                {fighter(b, fight.status === 'final')}
+              </div>
+              <span className="shrink-0 flex items-center gap-1.5">
+                {fight.status === 'live' && (
+                  <span className="inline-flex rounded-full h-1.5 w-1.5 bg-red-500 animate-pulse motion-reduce:animate-none" aria-hidden="true"></span>
+                )}
+                <span className={`font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-wider ${fight.status === 'live' ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                  {fight.status === 'final' ? 'Final' : fight.status === 'live' ? 'Live' : 'Upcoming'}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -389,8 +456,9 @@ function MatchDetail() {
                 <span className="font-display font-stretch-[72%] text-[11px] uppercase tracking-widest text-white/80 font-bold block">
                   {league?.name ?? match.league_id}
                 </span>
-                {/* Tennis/cricket context: which tournament, draw, or series this is */}
-                {match.tournament && (
+                {/* Tennis/cricket context: which tournament, draw, or series this is.
+                    Skipped when it just repeats the league name (UFC · UFC) */}
+                {match.tournament && match.tournament !== league?.name && (
                   <span className="text-[11px] text-white/70 block truncate">{match.tournament}</span>
                 )}
               </div>
@@ -527,9 +595,14 @@ function MatchDetail() {
           </div>
         )}
 
-        {/* Golf leaderboard: the whole point of a golf detail page */}
+        {/* Golf/racing leaderboard: the whole point of those detail pages */}
         {summary?.leaderboard && summary.leaderboard.length > 0 && (
           <GolfLeaderboard leaderboard={summary.leaderboard} round={summary.round} />
+        )}
+
+        {/* UFC fight card, bout by bout */}
+        {summary?.fights && summary.fights.length > 0 && (
+          <FightCard fights={summary.fights} />
         )}
 
         {/* Linescore: per-period/inning/half breakdown when the box score has one */}

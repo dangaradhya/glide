@@ -17,9 +17,9 @@
 // ESPN's ToS. Accepted as a known risk (flagged in the roadmap); if they ever get
 // blocked, affected leagues fall back to the outbound-link cards via the frontend's
 // staleness check, same as any vendor outage would.
-// F1 and MMA are deliberately excluded - both exist on ESPN too, but neither fits the
-// two-teams-with-a-score shape (F1 is a multi-entrant race with a finishing order, MMA is a
-// 1-on-1 fight decided by method, not a score) - revisit with a schema that fits them later.
+// F1/NASCAR/UFC don't fit the two-teams-with-a-score shape and instead reuse golf's
+// one-row-per-event pattern (single-title rows, detail served by the summary route) -
+// see normalizeEspnRacingEvent / normalizeEspnMmaEvent below.
 require('dotenv').config();
 const cron = require('node-cron');
 
@@ -199,6 +199,86 @@ function normalizeEspnGolfEvent(event, league_id, slug) {
     };
 }
 
+// Racing reuses golf's one-row-per-event pattern. An F1 "event" is a whole race
+// weekend carrying its sessions (FP1/FP2/FP3/Qual/Race) as competitions - the Race
+// session is the headline; NASCAR events have a single competition. Two data
+// gotchas verified live: the F1 EVENT-level status lies (reports 'post' after
+// Friday practice with the race still two days out), so row status derives from
+// the sessions - live if any session is in progress, final only when the Race
+// session is; and event.date is Friday practice, so start_time uses the Race
+// session's own date (when a fan asks "when's the GP" they mean the race).
+const RACING_LABELS = { f1: 'Formula 1', 'nascar-premier': 'NASCAR Cup Series' };
+
+function normalizeEspnRacingEvent(event, league_id, slug) {
+    const comps = event.competitions || [];
+    const race = comps.find((c) => c.type?.abbreviation === 'Race') || comps[comps.length - 1] || {};
+    const liveSession = comps.find((c) => c.status?.type?.state === 'in');
+    const status = liveSession ? 'live' : race.status?.type?.state === 'post' ? 'final' : 'scheduled';
+
+    // NASCAR never sets winner flags (verified on a finished race) - the order-1
+    // finisher is the winner once the race is over
+    const winner = (race.competitors || []).find((c) => c.winner)
+        || (race.status?.type?.state === 'post' ? (race.competitors || []).find((c) => c.order === 1) : null);
+    const winnerName = winner?.athlete?.shortName || winner?.athlete?.displayName || null;
+
+    return {
+        league_id,
+        vendor: 'espn',
+        external_id: `racing-${event.id}`,
+        series_id: slug,
+        home_team: event.name || event.shortName || null,
+        away_team: null,
+        home_logo: null,
+        away_logo: null,
+        home_score: null,
+        away_score: null,
+        score_summary: status === 'final' && winnerName ? `Winner: ${winnerName}` : null,
+        status,
+        start_time: race.date || event.date,
+        clock: status === 'live'
+            ? [liveSession?.type?.text || liveSession?.type?.abbreviation, 'Live'].filter(Boolean).join(' · ')
+            : null,
+        tournament: RACING_LABELS[slug] || 'Racing',
+    };
+}
+
+// A UFC "event" is a whole fight card (a dozen bouts as competitions, each with two
+// fighters and winner flags). One row per card; the bout-by-bout view lives on the
+// detail page via the summary route. ESPN lists bouts chronologically - prelims
+// first - so the main event is the LAST-listed bout (verified on a live card).
+function normalizeEspnMmaEvent(event, league_id) {
+    const fights = event.competitions || [];
+    const status = normalizeEspnStatus(event.status?.type?.state);
+
+    const fighterName = (c) => c?.athlete?.shortName || c?.athlete?.displayName || null;
+    let mainResult = null;
+    const main = fights[fights.length - 1];
+    if (main && main.status?.type?.state === 'post') {
+        const win = (main.competitors || []).find((c) => c.winner);
+        const lose = (main.competitors || []).find((c) => !c.winner);
+        if (win && lose) mainResult = `Main event: ${fighterName(win)} def. ${fighterName(lose)}`;
+    }
+    const done = fights.filter((f) => f.status?.type?.state === 'post').length;
+
+    return {
+        league_id,
+        vendor: 'espn',
+        external_id: `mma-${event.id}`,
+        series_id: 'ufc',
+        home_team: event.name || null,
+        away_team: null,
+        home_logo: null,
+        away_logo: null,
+        home_score: null,
+        away_score: null,
+        score_summary: status === 'scheduled' ? null : mainResult,
+        status,
+        start_time: event.date,
+        clock: status === 'live' && fights.length > 0 ? `${done}/${fights.length} fights done` : null,
+        tournament: 'UFC',
+    };
+}
+
 // dateRange (optional, "YYYYMMDD-YYYYMMDD") widens the fetch from "today's scoreboard"
 // to a whole window - used by the hourly fixtures sweep. Omitted for the every-minute
 // live cycle, where today's default response is exactly what's wanted.
@@ -210,6 +290,14 @@ async function fetchEspnLeague({ league_id, sport, slug }, dateRange) {
 
     if (sport === 'golf') {
         return events.map((event) => normalizeEspnGolfEvent(event, league_id, slug));
+    }
+
+    if (sport === 'racing') {
+        return events.map((event) => normalizeEspnRacingEvent(event, league_id, slug));
+    }
+
+    if (sport === 'mma') {
+        return events.map((event) => normalizeEspnMmaEvent(event, league_id));
     }
 
     if (sport === 'tennis') {

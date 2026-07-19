@@ -35,6 +35,9 @@ const ESPN_LEAGUES = [
     { league_id: 'atp', sport: 'tennis', slug: 'wta' },
     { league_id: 'golf', sport: 'golf', slug: 'pga' },
     { league_id: 'golf', sport: 'golf', slug: 'liv' },
+    { league_id: 'f1', sport: 'racing', slug: 'f1' },
+    { league_id: 'nascar', sport: 'racing', slug: 'nascar-premier' },
+    { league_id: 'ufc', sport: 'mma', slug: 'ufc' },
 ];
 
 module.exports = { ESPN_LEAGUES };
