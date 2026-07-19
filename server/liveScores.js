@@ -99,7 +99,13 @@ function normalizeEspnTennisMatch(match, league_id, tournament) {
         return awaySet ? `${set.value}-${awaySet.value}` : null;
     }).filter(Boolean);
 
-    const competitorName = (c) => c?.athlete?.displayName || c?.team?.displayName || null;
+    // ESPN-style seed prefix ("(1) Andrey Rublev") from curatedRank - a draw seed
+    // is never above 32, so anything larger (or absent) is skipped
+    const competitorName = (c) => {
+        const name = c?.athlete?.displayName || c?.team?.displayName || null;
+        const seed = c?.curatedRank?.current;
+        return name && seed >= 1 && seed <= 32 ? `(${seed}) ${name}` : name;
+    };
 
     return {
         league_id,
@@ -107,17 +113,40 @@ function normalizeEspnTennisMatch(match, league_id, tournament) {
         external_id: match.id,
         home_team: competitorName(home),
         away_team: competitorName(away),
-        // Tennis competitors are athletes, not teams - there's no logo to carry
-        home_logo: null,
-        away_logo: null,
+        // Athletes carry no team logo, but their country flag (same ESPN CDN asset
+        // espn.com shows) fills the logo slot everywhere the frontend renders one
+        home_logo: home?.athlete?.flag?.href || null,
+        away_logo: away?.athlete?.flag?.href || null,
         home_score: null,
         away_score: null,
         score_summary: setScores.length > 0 ? setScores.join(', ') : null,
         status,
         start_time: match.date,
         clock: status === 'live' ? match.status.type.shortDetail : null,
-        tournament,
+        // The round is per-match, so it appends here rather than in the shared
+        // "Tournament · Draw" prefix built per grouping
+        tournament: [tournament, match.round?.displayName].filter(Boolean).join(' · ') || null,
     };
+}
+
+// Who's serving - the only live texture ESPN exposes for tennis (there is no
+// in-game point score anywhere in their data; verified across the scoreboard,
+// summary, and core endpoints). One situation call per LIVE match per minute
+// cycle - a handful of requests at most - and any failure leaves the plain clock.
+async function tennisClockWithServer(clock, slug, eventId, match) {
+    try {
+        const url = `https://sports.core.api.espn.com/v2/sports/tennis/leagues/${slug}/events/${eventId}/competitions/${match.id}/situation?lang=en`;
+        const res = await fetch(url);
+        if (!res.ok) return clock;
+        const situation = await res.json();
+        const served = /athletes\/(\d+)/.exec(situation.server?.$ref || '');
+        const server = served && (match.competitors || []).find((c) => String(c.id) === served[1]);
+        const name = server ? (server.athlete?.shortName || server.athlete?.displayName) : null;
+        if (!name) return clock;
+        return clock ? `${clock} · ${name} serving` : `${name} serving`;
+    } catch {
+        return clock;
+    }
 }
 
 // A golf "event" is a whole multi-day tournament: 100+ athletes on one leaderboard,
@@ -188,15 +217,23 @@ async function fetchEspnLeague({ league_id, sport, slug }, dateRange) {
         // Women's Singles / ...) lives on the grouping. "Tournament · Draw" is what
         // the frontend groups rows under - it's also how men's and women's matches
         // stop being jumbled together in one anonymous list.
-        return events.flatMap((event) =>
-            (event.groupings || []).flatMap((grouping) => {
+        const rows = [];
+        for (const event of events) {
+            for (const grouping of (event.groupings || [])) {
                 const tournament = [
                     event.shortName || event.name,
                     grouping.grouping?.displayName,
                 ].filter(Boolean).join(' · ') || null;
-                return (grouping.competitions || []).map((match) => normalizeEspnTennisMatch(match, league_id, tournament));
-            })
-        );
+                for (const match of (grouping.competitions || [])) {
+                    const row = normalizeEspnTennisMatch(match, league_id, tournament);
+                    if (row.status === 'live') {
+                        row.clock = await tennisClockWithServer(row.clock, slug, event.id, match);
+                    }
+                    rows.push(row);
+                }
+            }
+        }
+        return rows;
     }
 
     return events.map((event) => normalizeEspnEvent(event, league_id));
