@@ -21,7 +21,7 @@ export default function ProfileVault() {
   const [activeTab, setActiveTab] = useState<'likedPosts' | 'savedPosts' | 'likedReels' | 'savedReels' | 'userComments'>('likedPosts');
   
   // The master state holding all arrays from the backend
-  const [vault, setVault] = useState({
+  const [vault, setVault] = useState<Record<'likedPosts' | 'savedPosts' | 'likedReels' | 'savedReels' | 'userComments', any[]>>({
     likedPosts: [],
     savedPosts: [],
     likedReels: [],
@@ -88,15 +88,28 @@ export default function ProfileVault() {
 
         if (res.ok) {
           const data = await res.json();
-          
-          // Merge Post Comments and Reel Comments into a single unified array, 
+
+          // Every vault item gets a type-prefixed vaultKey. The raw ids are NOT
+          // unique across the vault: post comments and reel comments come from
+          // different tables whose ids both count from 1, so the merged
+          // comments list can contain two items with the same id - and posts/
+          // reels/comments collide across tabs too. Using bare item.id as the
+          // React key made React duplicate leaked cards on every tab switch
+          // (its documented duplicate-key behavior) until a refresh.
+          const tag = (arr: any[], prefix: string) =>
+            (arr || []).map((x) => ({ ...x, vaultKey: `${prefix}-${x.id}` }));
+
+          // Merge Post Comments and Reel Comments into a single unified array,
           // then sort them in descending order (newest first) using their UTC timestamps.
-          const combinedComments = [...(data.userComments || []), ...(data.userReelComments || [])]
+          const combinedComments = [...tag(data.userComments, 'pc'), ...tag(data.userReelComments, 'rc')]
             .sort((a, b) => new Date(b.timestamp + 'Z').getTime() - new Date(a.timestamp + 'Z').getTime());
 
           setVault({
-            ...data,
-            userComments: combinedComments 
+            likedPosts: tag(data.likedPosts, 'lp'),
+            savedPosts: tag(data.savedPosts, 'sp'),
+            likedReels: tag(data.likedReels, 'lr'),
+            savedReels: tag(data.savedReels, 'sr'),
+            userComments: combinedComments
           });
         } else if (res.status === 401 || res.status === 403) {
             localStorage.removeItem('glide_token');
@@ -419,7 +432,7 @@ export default function ProfileVault() {
                 
                 {activeData.map((item: any) => (
                   // Dynamic card backgrounds matching the main feed
-                  <div key={item.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-md dark:shadow-lg flex flex-col h-full group hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+                  <div key={item.vaultKey ?? item.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-md dark:shadow-lg flex flex-col h-full group hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
                     
                     {/* Render Post Layout */}
                     {item.headline && !item.text && (
