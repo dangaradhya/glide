@@ -409,54 +409,99 @@ function FightCard({ fights }: { fights: FightData[] }) {
   );
 }
 
-// Soccer starting XIs, home left / away right: formation under each team name,
-// the XI in formation order with jersey numbers, subs-used beneath in smaller
-// text. Names truncate inside their column - the block never widens the page.
-function Lineups({ lineups, homeName, awayName }: {
+// Group a starting XI into pitch rows: GK first, then one row per formation
+// segment ("4-2-3-1" -> [1, 4, 2, 3, 1]). The starters arrive sorted by
+// formationPlace, so sequential slicing lands each player in the right line.
+// If the formation string is missing or doesn't sum to the outfield count,
+// players chunk into rows of <=4 so the pitch never breaks.
+function formationRows(side: LineupSide): LineupSide['starters'][] {
+  const starters = side.starters;
+  if (starters.length === 0) return [];
+  const [gk, ...outfield] = starters;
+  const digits = (side.formation || '').split('-').map(Number).filter((n) => Number.isFinite(n) && n > 0);
+  const rows: LineupSide['starters'][] = [];
+  if (digits.length > 0 && digits.reduce((a, b) => a + b, 0) === outfield.length) {
+    let i = 0;
+    for (const d of digits) { rows.push(outfield.slice(i, i + d)); i += d; }
+  } else {
+    for (let i = 0; i < outfield.length; i += 4) rows.push(outfield.slice(i, i + 4));
+  }
+  return [[gk], ...rows];
+}
+
+const surname = (name: string | null) => (name || '').trim().split(' ').slice(-1)[0] || '';
+
+function PlayerMarker({ player, home }: { player: LineupSide['starters'][0]; home: boolean }) {
+  return (
+    <div className="flex flex-col items-center w-14 min-w-0">
+      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold tabular-nums shadow-md ${home ? 'bg-white text-gray-900' : 'bg-gray-900 text-white ring-1 ring-white/50'}`}>
+        {player.jersey || '·'}
+      </span>
+      <span className="mt-0.5 text-[9px] leading-tight text-white/90 truncate max-w-full" title={player.name ?? undefined}>
+        {surname(player.name)}
+      </span>
+    </div>
+  );
+}
+
+// Both XIs on one vertical pitch, Google-style: away up top attacking down
+// (GK at the very top), home at the bottom attacking up (GK at the very
+// bottom), rows straight from each side's formation. Subs-used sit beneath.
+function FormationPitch({ lineups, homeName, awayName }: {
   lineups: NonNullable<MatchSummary['lineups']>;
   homeName: string | null;
   awayName: string | null;
 }) {
-  const side = (s: LineupSide | null, name: string | null, alignRight: boolean) => (
-    <div className={`flex-1 min-w-0 ${alignRight ? 'text-right' : ''}`}>
-      <p className="font-display font-stretch-[72%] text-[11px] font-bold uppercase tracking-widest text-gray-700 dark:text-gray-200 truncate">
-        {name}
-      </p>
-      {s?.formation && (
-        <p className="text-[11px] tabular-nums text-gray-400 dark:text-gray-500 mb-1.5">{s.formation}</p>
-      )}
-      <ul className="space-y-1 text-[13px] text-gray-700 dark:text-gray-300">
-        {(s?.starters || []).map((p, i) => (
-          <li key={i} className="truncate">
-            {alignRight ? (
-              <>{p.name} <span className="text-gray-400 dark:text-gray-500 tabular-nums">{p.jersey}</span></>
-            ) : (
-              <><span className="text-gray-400 dark:text-gray-500 tabular-nums">{p.jersey}</span> {p.name}</>
-            )}
-          </li>
-        ))}
-      </ul>
-      {(s?.subs?.length ?? 0) > 0 && (
-        <ul className="mt-2 space-y-1 text-xs text-gray-400 dark:text-gray-500">
-          {s!.subs.map((p, i) => (
-            <li key={i} className="truncate">
-              {alignRight ? <>{p.name} <span aria-hidden="true">⇄</span></> : <><span aria-hidden="true">⇄</span> {p.name}</>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  const homeRows = lineups.home ? formationRows(lineups.home) : [];
+  const awayRows = lineups.away ? formationRows(lineups.away) : [];
 
   return (
     <div className="px-4 py-3 md:px-8 border-b border-gray-100 dark:border-gray-800">
-      <p className="font-display font-stretch-[72%] text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 text-center mb-2.5">
-        Lineups
-      </p>
-      <div className="flex justify-between gap-6">
-        {side(lineups.home, homeName, false)}
-        {side(lineups.away, awayName, true)}
+      <div className="relative rounded-xl overflow-hidden bg-gradient-to-b from-emerald-600 to-emerald-800 dark:from-emerald-800 dark:to-emerald-950 max-w-md mx-auto">
+        {/* Pitch markings: touchline, halfway line, centre circle, both boxes */}
+        <div className="absolute inset-2 rounded-lg border-2 border-white/20 pointer-events-none" aria-hidden="true"></div>
+        <div className="absolute left-2 right-2 top-1/2 border-t-2 border-white/20 pointer-events-none" aria-hidden="true"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full border-2 border-white/20 pointer-events-none" aria-hidden="true"></div>
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-28 h-9 border-2 border-t-0 border-white/20 pointer-events-none" aria-hidden="true"></div>
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-28 h-9 border-2 border-b-0 border-white/20 pointer-events-none" aria-hidden="true"></div>
+
+        <div className="relative flex flex-col gap-1.5 py-3">
+          <p className="px-4 flex justify-between items-baseline text-[10px] font-semibold text-white/80">
+            <span className="truncate">{awayName}</span>
+            {lineups.away?.formation && <span className="tabular-nums shrink-0 ml-2">{lineups.away.formation}</span>}
+          </p>
+          {awayRows.map((row, i) => (
+            <div key={`a${i}`} className="flex justify-evenly">
+              {row.map((p, j) => <PlayerMarker key={j} player={p} home={false} />)}
+            </div>
+          ))}
+          <div className="h-4" aria-hidden="true"></div>
+          {[...homeRows].reverse().map((row, i) => (
+            <div key={`h${i}`} className="flex justify-evenly">
+              {row.map((p, j) => <PlayerMarker key={j} player={p} home={true} />)}
+            </div>
+          ))}
+          <p className="px-4 flex justify-between items-baseline text-[10px] font-semibold text-white/80">
+            <span className="truncate">{homeName}</span>
+            {lineups.home?.formation && <span className="tabular-nums shrink-0 ml-2">{lineups.home.formation}</span>}
+          </p>
+        </div>
       </div>
+
+      {((lineups.home?.subs?.length ?? 0) > 0 || (lineups.away?.subs?.length ?? 0) > 0) && (
+        <div className="flex justify-between gap-6 mt-3 max-w-md mx-auto text-xs text-gray-400 dark:text-gray-500">
+          <ul className="space-y-1 min-w-0">
+            {(lineups.home?.subs || []).map((p, i) => (
+              <li key={i} className="truncate"><span aria-hidden="true">⇄</span> {p.name}</li>
+            ))}
+          </ul>
+          <ul className="space-y-1 min-w-0 text-right">
+            {(lineups.away?.subs || []).map((p, i) => (
+              <li key={i} className="truncate">{p.name} <span aria-hidden="true">⇄</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -467,6 +512,8 @@ function MatchDetail() {
 
   const [match, setMatch] = useState<Match | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
+  // Soccer detail with lineups gets a Stats | Lineups pill toggle; stats default
+  const [soccerView, setSoccerView] = useState<'stats' | 'lineups'>('stats');
   const [notFound, setNotFound] = useState<boolean>(false);
   const [loaded, setLoaded] = useState<boolean>(false);
 
@@ -552,6 +599,7 @@ function MatchDetail() {
     : `${dayLabel(start)} · ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 
   const linescoreCols = Math.max(summary?.home?.linescores?.length ?? 0, summary?.away?.linescores?.length ?? 0);
+  const showingLineups = !!summary?.lineups && soccerView === 'lineups';
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -702,9 +750,29 @@ function MatchDetail() {
           </div>
         )}
 
-        {/* Soccer starting XIs, once ESPN publishes them */}
+        {/* Soccer with published lineups: Stats | Lineups pill toggle. Stats is
+            the default, so matches render exactly as before until Lineups is
+            tapped; matches without lineup data get no pills at all. */}
         {summary?.lineups && (
-          <Lineups lineups={summary.lineups} homeName={match.home_team} awayName={match.away_team} />
+          <div className="flex gap-1.5 px-4 pt-3 md:px-8">
+            {(['stats', 'lineups'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setSoccerView(tab)}
+                className={`rounded-full px-3 py-1 font-display font-stretch-[72%] text-[11px] font-semibold uppercase tracking-[0.07em] transition-colors ${
+                  soccerView === tab
+                    ? 'bg-court text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                {tab === 'stats' ? 'Stats' : 'Lineups'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showingLineups && summary?.lineups && (
+          <FormationPitch lineups={summary.lineups} homeName={match.home_team} awayName={match.away_team} />
         )}
 
         {/* Cricket scorecard: innings-by-innings batting and bowling cards */}
@@ -731,7 +799,7 @@ function MatchDetail() {
         )}
 
         {/* Linescore: per-period/inning/half breakdown when the box score has one */}
-        {summary && linescoreCols > 0 && (
+        {summary && !showingLineups && linescoreCols > 0 && (
           <div className="border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -766,7 +834,7 @@ function MatchDetail() {
         )}
 
         {/* Team stat comparisons (possession, shots, fouls, ...) when available */}
-        {summary?.stats && summary.stats.length > 0 && (
+        {summary?.stats && !showingLineups && summary.stats.length > 0 && (
           <div className="divide-y divide-gray-50 dark:divide-gray-800/60 py-1">
             {summary.stats.map(stat => (
               <StatRow key={stat.label} stat={stat} />

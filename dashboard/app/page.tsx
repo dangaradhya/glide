@@ -22,6 +22,7 @@ import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import SignInPrompt, { SIGN_IN_PROMPTS, SignInPromptContent } from '@/components/SignInPrompt';
 import Brand from '@/components/Brand';
 import TopTabs from '@/components/TopTabs';
 import LiveRail from '@/components/LiveRail';
@@ -56,6 +57,8 @@ export default function Home() {
   // 'posts' holds the array of data from SQLite. 'loading' gives us a cool UI state.
   // Explicitly defining type as any[] to prevent TypeScript errors.
   const [posts, setPosts] = useState<any[]>([]);
+  // Which sign-in gate message is showing, if any - replaces the old alert()s
+  const [signInPrompt, setSignInPrompt] = useState<SignInPromptContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('All'); // New state for category filter
 
@@ -327,7 +330,7 @@ export default function Home() {
   const handleLike = async (id: number) => {
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      alert("Please log in to like posts!");
+      setSignInPrompt(SIGN_IN_PROMPTS.like);
       return;
     }
 
@@ -348,12 +351,12 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' }
       });
 
-      // If the token is invalid/expired, we alert the user, clear their session, and rollback the visual toggle.
+      // If the token is invalid/expired, we prompt a re-sign-in, clear their session, and rollback the visual toggle.
       if (res.status === 401 || res.status === 403) {
-        alert("Your session expired. Please log in again.");
         localStorage.removeItem('glide_token');
         localStorage.removeItem('glide_user');
-        
+        setSignInPrompt(SIGN_IN_PROMPTS.expired);
+
         // Rollback the visual if token fails
         setPosts(currentPosts => currentPosts.map(post =>
           post.id === id ? { ...post, userLiked: !isLiking } : post
@@ -392,7 +395,7 @@ export default function Home() {
     // We check for the token, toggle the bookmark icon immediately, and then confirm with the backend.
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      alert("Please log in to save posts!");
+      setSignInPrompt(SIGN_IN_PROMPTS.save);
       return;
     }
 
@@ -418,12 +421,12 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' }
       });
       
-      // If the token is invalid/expired, we alert the user, clear their session, and rollback the visual toggle.
+      // If the token is invalid/expired, we prompt a re-sign-in, clear their session, and rollback the visual toggle.
       if (res.status === 401 || res.status === 403) {
-        alert("Your session expired. Please log in again.");
         localStorage.removeItem('glide_token');
         localStorage.removeItem('glide_user');
-        
+        setSignInPrompt(SIGN_IN_PROMPTS.expired);
+
         // Rollback the visual if token fails
         setPosts(currentPosts => currentPosts.map(post =>
           post.id === id ? { ...post, userSaved: !isSaving } : post
@@ -496,7 +499,7 @@ export default function Home() {
     if (!newCommentText.trim() || !activePost) return;
 
     const token = localStorage.getItem('glide_token');
-    if (!token) return alert("Please log in to comment.");
+    if (!token) return setSignInPrompt(SIGN_IN_PROMPTS.comment);
 
     // We make a POST request to submit the new comment to the backend. The body of the request includes the comment text, and we attach the token for authentication.
     try {
@@ -1092,6 +1095,8 @@ export default function Home() {
       
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
       <BottomNav active="posts" />
+
+      <SignInPrompt prompt={signInPrompt} onClose={() => setSignInPrompt(null)} />
 
     </main>
   );

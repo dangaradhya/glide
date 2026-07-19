@@ -11,6 +11,7 @@ import AuthButton from '@/components/AuthButton';
 // preferences routes keep using apiFetch.
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import SignInPrompt, { SIGN_IN_PROMPTS, SignInPromptContent } from '@/components/SignInPrompt';
 import Brand from '@/components/Brand';
 import TopTabs from '@/components/TopTabs';
 import { AVAILABLE_LEAGUES, League, Match, parseUtc, dayLabel, tournamentFilterKey, SINGLE_ENTRY_LEAGUES } from '@/lib/leagues';
@@ -439,6 +440,8 @@ export default function LiveUpdatesPage() {
   // 1. STATE MANAGEMENT
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [preferences, setPreferences] = useState<string[]>([]);
+  // Which sign-in gate message is showing, if any - replaces the old alert()
+  const [signInPrompt, setSignInPrompt] = useState<SignInPromptContent | null>(null);
   const [isEditingPreferences, setIsEditingPreferences] = useState<boolean>(false);
   const [selectedLeagues, setSelectedLeagues] = useState<string[]>([]);
   const [preferencesLoading, setPreferencesLoading] = useState<boolean>(true);
@@ -555,10 +558,10 @@ export default function LiveUpdatesPage() {
 
       // Intercept expired tokens during the save action
       if (res.status === 401 || res.status === 403) {
-        alert("Your session expired. Please log in again.");
         localStorage.removeItem('glide_token');
         localStorage.removeItem('glide_user');
         setIsAuthenticated(false);
+        setSignInPrompt(SIGN_IN_PROMPTS.expired);
         return;
       }
 
@@ -778,6 +781,8 @@ export default function LiveUpdatesPage() {
           not carved out of it - Tailwind's border-box sizing means a fixed height plus bottom
           padding alone would shrink the usable content area on tall insets */}
       <BottomNav active="match_center" />
+
+      <SignInPrompt prompt={signInPrompt} onClose={() => setSignInPrompt(null)} />
 
     </main>
   );

@@ -29,6 +29,14 @@ export default function AuthButton() {
   // Modal state to control the visibility of the sign-in options.
   const [showModal, setShowModal] = useState(false);
 
+  // SignInPrompt's "Sign in" CTA rings this doorbell from anywhere on the page -
+  // the modal and every OAuth handler stay right here, untouched.
+  useEffect(() => {
+    const open = () => setShowModal(true);
+    window.addEventListener('glide:open-auth', open);
+    return () => window.removeEventListener('glide:open-auth', open);
+  }, []);
+
   // Track stable variable scope for life-cycle dependency
   const userAgentString = typeof window !== 'undefined' ? window.navigator.userAgent : '';
   const isAppleSystem = /Macintosh|iPhone|iPad|iPod/i.test(userAgentString);
