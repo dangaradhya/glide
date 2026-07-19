@@ -1972,8 +1972,14 @@ app.get('/api/matches/:id/summary', (req, res) => {
                             name: p.athlete?.displayName || null,
                             jersey: p.jersey || null,
                             position: p.position?.abbreviation || null,
+                            // The frontend's formation templates key on this
+                            place: Number(p.formationPlace) || null,
                         })),
-                    subs: (r.roster || []).filter((p) => !p.starter && p.subbedIn)
+                    // Pre-kickoff ESPN flags the ENTIRE bench subbedIn (observed
+                    // on the 2026 WC final), which would render all 15 names -
+                    // suppress subs until the match starts, after which the flag
+                    // means "actually came on" again.
+                    subs: row.status === 'scheduled' ? [] : (r.roster || []).filter((p) => !p.starter && p.subbedIn)
                         .map((p) => ({
                             name: p.athlete?.displayName || null,
                             jersey: p.jersey || null,
