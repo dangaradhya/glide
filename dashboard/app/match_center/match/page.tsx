@@ -409,14 +409,57 @@ function FightCard({ fights }: { fights: FightData[] }) {
   );
 }
 
-// Group a starting XI into pitch rows: GK first, then one row per formation
-// segment ("4-2-3-1" -> [1, 4, 2, 3, 1]). The starters arrive sorted by
-// formationPlace, so sequential slicing lands each player in the right line.
-// If the formation string is missing or doesn't sum to the outfield count,
-// players chunk into rows of <=4 so the pitch never breaks.
-function formationRows(side: LineupSide): LineupSide['starters'][] {
+// ESPN's formationPlace is the classic shirt-number scheme (1 GK, 2 RB, 4 the
+// DM/pivot, 9 the striker, 11 LM...), NOT a row-by-row slot order. position.abbreviation
+// (RB, CD-L, DM, AM-R, F...) is the ground truth for which line a player is in.
+// Band index per abbreviation: 0 GK, then defence → DM → midfield → AM → attack.
+function positionBand(pos: string): number | null {
+  const p = pos.toUpperCase();
+  if (p === 'G' || p === 'GK') return 0;
+  if (/^(RB|LB|CB|CD|SW|RWB|LWB|WB)(-[RL])?$/.test(p)) return 1;
+  if (/^C?DM(-[RL])?$/.test(p)) return 2;
+  if (/^(M|CM|RM|LM)(-[RL])?$/.test(p)) return 3;
+  if (/^C?AM(-[RL])?$/.test(p)) return 4;
+  if (/^(F|CF|ST|LW|RW|LF|RF)(-[RL])?$/.test(p)) return 5;
+  return null;
+}
+
+// Viewer left-to-right order within a line for the away side, whose right wing
+// is on the viewer's left (they attack down the screen); home rows reverse it.
+function sideRank(pos: string): number {
+  const p = pos.toUpperCase();
+  if (p.startsWith('R')) return 0;
+  if (p.endsWith('-R')) return 1;
+  if (p.endsWith('-L')) return 3;
+  if (p.startsWith('L')) return 4;
+  return 2;
+}
+
+// Group a starting XI into pitch rows: one row per position band when every
+// starter has a recognizable position (with exactly one GK and no implausibly
+// wide line). Otherwise fall back to slicing the formationPlace order by the
+// formation string ("4-2-3-1" -> [4, 2, 3, 1]), then to rows of <=4, so the
+// pitch never breaks.
+function formationRows(side: LineupSide, home: boolean): LineupSide['starters'][] {
   const starters = side.starters;
   if (starters.length === 0) return [];
+
+  const bands: LineupSide['starters'][] = [[], [], [], [], [], []];
+  let unknown = false;
+  for (const p of starters) {
+    const band = p.position != null ? positionBand(p.position) : null;
+    if (band == null) { unknown = true; break; }
+    bands[band].push(p);
+  }
+  if (!unknown && bands[0].length === 1 && bands.every((b) => b.length <= 5)) {
+    const rows = bands.filter((b) => b.length > 0);
+    for (const row of rows) {
+      row.sort((a, b) => sideRank(a.position as string) - sideRank(b.position as string));
+      if (home) row.reverse();
+    }
+    return rows;
+  }
+
   const [gk, ...outfield] = starters;
   const digits = (side.formation || '').split('-').map(Number).filter((n) => Number.isFinite(n) && n > 0);
   const rows: LineupSide['starters'][] = [];
@@ -452,8 +495,8 @@ function FormationPitch({ lineups, homeName, awayName }: {
   homeName: string | null;
   awayName: string | null;
 }) {
-  const homeRows = lineups.home ? formationRows(lineups.home) : [];
-  const awayRows = lineups.away ? formationRows(lineups.away) : [];
+  const homeRows = lineups.home ? formationRows(lineups.home, true) : [];
+  const awayRows = lineups.away ? formationRows(lineups.away, false) : [];
 
   return (
     <div className="px-4 py-3 md:px-8 border-b border-gray-100 dark:border-gray-800">

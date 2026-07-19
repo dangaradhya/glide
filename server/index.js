@@ -1738,52 +1738,82 @@ app.get('/api/matches/:id/summary', (req, res) => {
                     return respond(404, { error: 'No results available for this event' });
                 }
 
-                // F1 race times (founder-requested; race only - practice/quali stay
-                // position-only, and NASCAR is skipped outright since its time stats
-                // are all zeros in ESPN's data). The per-driver times live behind
-                // per-competitor core-API calls, so the 22-call burst gets its own
-                // 5-minute cache on top of the 60s summary cache: positions keep
-                // updating every poll during a live race, only the time gaps go up
-                // to 5 minutes stale - and after the flag they never change anyway.
-                const race = comps.find((c) => c.type?.abbreviation === 'Race');
-                const raceSession = race && sessions.find((s) => s.leaderboard.length > 0
-                    && s.label === (race.type?.text || race.type?.abbreviation || 'Session'));
-                if (row.series_id === 'f1' && race && raceSession && race.status?.type?.state !== 'pre') {
-                    const sortedCompetitors = [...(race.competitors || [])]
-                        .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
-                    let cached = racingTimesCache.get(String(race.id));
-                    if (!cached || cached.expiresAt <= Date.now()) {
-                        // "0.000"/".000"/empty mean ESPN hasn't filled the value
-                        const meaningful = (v) => (v && !/^[0:.]+$/.test(String(v)) ? String(v) : null);
-                        const timesById = {};
-                        await Promise.all(sortedCompetitors.map(async (c, idx) => {
-                            try {
-                                const statsUrl = `https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/${encodeURIComponent(eventId)}/competitions/${encodeURIComponent(race.id)}/competitors/${encodeURIComponent(c.id)}/statistics?lang=en`;
-                                const sres = await fetch(statsUrl);
-                                if (!sres.ok) return;
-                                const sjson = await sres.json();
-                                const stats = {};
-                                for (const cat of (sjson.splits?.categories || [])) {
-                                    for (const s of (cat.stats || [])) stats[s.name] = s.displayValue;
-                                }
+                // F1 session times for the Race and Qualifying (practice stays
+                // position-only, and NASCAR is skipped outright since its time
+                // stats are all zeros in ESPN's data). ESPN only fills
+                // totalTime/behindTime AFTER a session ends (verified live: all
+                // nulls mid-race), so the 22-call per-competitor burst runs only
+                // once a session's state is 'post' - and a burst that returned
+                // real data is kept for the server's lifetime, so ESPN sees one
+                // burst after quali and one after the race. An empty burst (ESPN
+                // lag right after the flag) retries on the short TTL instead.
+                if (row.series_id === 'f1') {
+                    for (const abbr of ['Race', 'Qual']) {
+                        const comp = comps.find((c) => c.type?.abbreviation === abbr);
+                        if (!comp || comp.status?.type?.state !== 'post') continue;
+                        const session = sessions.find((s) => s.leaderboard.length > 0
+                            && s.label === (comp.type?.text || comp.type?.abbreviation || 'Session'));
+                        if (!session) continue;
+                        const sortedCompetitors = [...(comp.competitors || [])]
+                            .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
+                        let cached = racingTimesCache.get(String(comp.id));
+                        if (!cached || cached.expiresAt <= Date.now()) {
+                            // "0.000"/".000"/empty mean ESPN hasn't filled the value
+                            const meaningful = (v) => (v && !/^[0:.]+$/.test(String(v)) ? String(v) : null);
+                            const rawById = {};
+                            await Promise.all(sortedCompetitors.map(async (c) => {
+                                try {
+                                    const statsUrl = `https://sports.core.api.espn.com/v2/sports/racing/leagues/f1/events/${encodeURIComponent(eventId)}/competitions/${encodeURIComponent(comp.id)}/competitors/${encodeURIComponent(c.id)}/statistics?lang=en`;
+                                    const sres = await fetch(statsUrl);
+                                    if (!sres.ok) return;
+                                    const sjson = await sres.json();
+                                    const stats = {};
+                                    for (const cat of (sjson.splits?.categories || [])) {
+                                        for (const s of (cat.stats || [])) stats[s.name] = s.displayValue;
+                                    }
+                                    rawById[c.id] = stats;
+                                } catch { /* that driver's time stays blank */ }
+                            }));
+                            // Winner/pole shows the full time; the field shows
+                            // gaps (quali's behindTime arrives already
+                            // "+"-prefixed, race's does not). Drivers with no
+                            // gap time are either lapped ("+N Laps" when they
+                            // ran ~the full distance, F1's classification line)
+                            // or retired ("DNF").
+                            const timesById = {};
+                            const winnerLaps = Number(rawById[sortedCompetitors[0]?.id]?.lapsCompleted) || null;
+                            sortedCompetitors.forEach((c, idx) => {
+                                const stats = rawById[c.id];
+                                if (!stats) return;
                                 const total = meaningful(stats.totalTime);
                                 const behind = meaningful(stats.behindTime);
-                                // Winner shows the full race time; the field shows gaps
-                                timesById[c.id] = idx === 0
-                                    ? total
-                                    : (behind ? (behind.startsWith('+') ? behind : `+${behind}`) : total);
-                            } catch { /* that driver's time stays blank */ }
-                        }));
-                        cached = { expiresAt: Date.now() + RACING_TIMES_CACHE_MS, timesById };
-                        racingTimesCache.set(String(race.id), cached);
-                        for (const [key, entry] of racingTimesCache) {
-                            if (entry.expiresAt <= Date.now()) racingTimesCache.delete(key);
+                                let score;
+                                if (idx === 0) score = total;
+                                else if (behind) score = behind.startsWith('+') ? behind : `+${behind}`;
+                                else if (total) score = total;
+                                else if (abbr === 'Race') {
+                                    const laps = Number(stats.lapsCompleted);
+                                    const behindLaps = Number(stats.behindLaps);
+                                    if (Number.isFinite(behindLaps) && behindLaps > 0) {
+                                        score = winnerLaps && laps >= 0.9 * winnerLaps
+                                            ? `+${behindLaps} Lap${behindLaps > 1 ? 's' : ''}`
+                                            : 'DNF';
+                                    }
+                                }
+                                if (score) timesById[c.id] = score;
+                            });
+                            const gotData = Object.values(timesById).some(Boolean);
+                            cached = { expiresAt: gotData ? Infinity : Date.now() + RACING_TIMES_CACHE_MS, timesById };
+                            racingTimesCache.set(String(comp.id), cached);
+                            for (const [key, entry] of racingTimesCache) {
+                                if (entry.expiresAt <= Date.now()) racingTimesCache.delete(key);
+                            }
                         }
+                        sortedCompetitors.forEach((c, idx) => {
+                            const score = cached.timesById[c.id];
+                            if (score && session.leaderboard[idx]) session.leaderboard[idx].score = score;
+                        });
                     }
-                    sortedCompetitors.forEach((c, idx) => {
-                        const score = cached.timesById[c.id];
-                        if (score && raceSession.leaderboard[idx]) raceSession.leaderboard[idx].score = score;
-                    });
                 }
 
                 return respond(200, {
