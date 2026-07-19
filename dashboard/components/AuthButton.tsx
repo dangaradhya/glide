@@ -30,10 +30,18 @@ export default function AuthButton() {
   const [showModal, setShowModal] = useState(false);
 
   // SignInPrompt's "Sign in" CTA rings this doorbell from anywhere on the page -
-  // the modal and every OAuth handler stay right here, untouched.
+  // the modal and every OAuth handler stay right here, untouched. Pages without
+  // their own AuthButton (Reels) instead set a sessionStorage flag and navigate
+  // here, so arrival with the flag set opens the modal straight away.
   useEffect(() => {
     const open = () => setShowModal(true);
     window.addEventListener('glide:open-auth', open);
+    try {
+      if (sessionStorage.getItem('glide_open_auth_on_load')) {
+        sessionStorage.removeItem('glide_open_auth_on_load');
+        open();
+      }
+    } catch { /* private mode - the button still works by tap */ }
     return () => window.removeEventListener('glide:open-auth', open);
   }, []);
 

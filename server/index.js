@@ -1678,6 +1678,20 @@ app.get('/api/matches/:id/summary', (req, res) => {
                         // Strokes per completed round (72, 68, ...)
                         rounds: (c.linescores || []).map((l) => (l.value != null ? String(l.value) : '-')),
                     }));
+                // Standard golf competition ranking: ESPN's order is unique
+                // (1,2,3...) even through ties, but two players on -10 share a
+                // position - show "1, 1, 3", the tied group inheriting the
+                // first member's number and the next score skipping past them.
+                let lastScore = null;
+                let lastPos = null;
+                for (const rowEntry of leaderboard) {
+                    if (rowEntry.score != null && rowEntry.score === lastScore) {
+                        rowEntry.position = lastPos;
+                    } else {
+                        lastScore = rowEntry.score;
+                        lastPos = rowEntry.position;
+                    }
+                }
                 return respond(200, {
                     leaderboard,
                     round: comp.status?.type?.detail || null,
