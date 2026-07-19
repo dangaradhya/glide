@@ -21,6 +21,7 @@ import PullToRefreshIndicator from '@/components/PullToRefreshIndicator';
 // Shared API client - base URL + auto-attached auth header, see lib/api.ts
 import { apiFetch, API_BASE_URL } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import SignInPrompt, { SIGN_IN_PROMPTS, SignInPromptContent } from '@/components/SignInPrompt';
 import TopTabs from '@/components/TopTabs';
 
 function ReelsContent() {
@@ -28,6 +29,8 @@ function ReelsContent() {
   // We maintain state for the list of reels, loading status, 
   // whether there are more reels to load, and whether we are currently loading more reels.
   const [reels, setReels] = useState<any[]>([]);
+  // Which sign-in gate message is showing, if any - replaces the old alert()s
+  const [signInPrompt, setSignInPrompt] = useState<SignInPromptContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -359,7 +362,7 @@ function ReelsContent() {
     // AUTH CHECK: Before allowing the user to like a reel, we check if they are authenticated by looking for a token in localStorage.
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      alert("Please log in to like reels!");
+      setSignInPrompt(SIGN_IN_PROMPTS.like);
       return;
     }
 
@@ -383,10 +386,10 @@ function ReelsContent() {
       // ERROR HANDLING: If the response indicates that the user's session has expired (401 or 403), we alert the user, 
       // clear their session data, and rollback the optimistic UI update to reflect that the like action was not successful.
       if (res.status === 401 || res.status === 403) {
-         alert("Your session expired. Please log in again.");
          localStorage.removeItem('glide_token');
          localStorage.removeItem('glide_user');
-         
+         setSignInPrompt(SIGN_IN_PROMPTS.expired);
+
          // Rollback visuals
          setReels(currentReels => currentReels.map(reel =>
            reel.id === id ? { ...reel, userLiked: !isLiking } : reel
@@ -425,7 +428,7 @@ function ReelsContent() {
     // If they are not logged in, we alert them and exit the function.
     const token = localStorage.getItem('glide_token');
     if (!token) {
-      alert("Please log in to save reels!");
+      setSignInPrompt(SIGN_IN_PROMPTS.save);
       return;
     }
 
@@ -451,10 +454,10 @@ function ReelsContent() {
       // ERROR HANDLING: If the response indicates that the user's session has expired (401 or 403), we alert the user, 
       // clear their session data, and rollback the optimistic UI update to reflect that the save action was not successful.
       if (res.status === 401 || res.status === 403) {
-        alert("Your session expired. Please log in again.");
         localStorage.removeItem('glide_token');
         localStorage.removeItem('glide_user');
-        
+        setSignInPrompt(SIGN_IN_PROMPTS.expired);
+
         // Rollback the visual if token fails
         setReels(currentReels => currentReels.map(reel =>
           reel.id === id ? { ...reel, userSaved: !isSaving } : reel
@@ -534,7 +537,7 @@ function ReelsContent() {
     if (!newCommentText.trim() || !activeReel) return;
 
     const token = localStorage.getItem('glide_token');
-    if (!token) return alert("Please log in to comment.");
+    if (!token) return setSignInPrompt(SIGN_IN_PROMPTS.comment);
 
     // OPTIMISTIC UI UPDATE: We immediately add the new comment to the comments state to reflect it in the UI for instant feedback.
     try {
@@ -1086,6 +1089,10 @@ function ReelsContent() {
       {/* Mobile Bottom Navigation Bar (Hidden on Desktop) */}
       {/* On reels, this bar overlays the video slightly with a sleek gradient, matching the TikTok/Instagram aesthetic */}
       <BottomNav active="reels" variant="overlay" />
+
+      {/* Reels' layout has no AuthButton, so the CTA routes home where the
+          header Sign In lives */}
+      <SignInPrompt prompt={signInPrompt} onClose={() => setSignInPrompt(null)} signInHref="/" />
 
     </main>
   );
