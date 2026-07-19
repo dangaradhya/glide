@@ -26,6 +26,7 @@ export const AVAILABLE_LEAGUES: League[] = [
   { id: 'golf', name: 'Golf', category: 'Golf', url: 'https://www.espn.com/golf/leaderboard', color: 'from-green-600 to-emerald-900' },
   { id: 'ufc', name: 'UFC', category: 'MMA', url: 'https://www.espn.com/mma/schedule', color: 'from-red-600 to-red-900' },
   { id: 'f1', name: 'Formula 1', category: 'Motorsport', url: 'https://www.formula1.com/en/racing/2026.html', color: 'from-red-500 to-rose-700' },
+  { id: 'nascar', name: 'NASCAR', category: 'Motorsport', url: 'https://www.espn.com/racing/nascar/', color: 'from-yellow-500 to-orange-700' },
   { id: 'premier_league', name: 'Premier League', category: 'Football', url: 'https://www.fotmob.com/leagues/47/overview/premier-league', color: 'from-purple-500 to-indigo-600' },
   { id: 'championship', name: 'EFL Championship', category: 'Football', url: 'https://www.espn.com/soccer/scoreboard/_/league/eng.2', color: 'from-blue-700 to-slate-900' },
   { id: 'serie_a', name: 'Serie A', category: 'Football', url: 'https://www.fotmob.com/leagues/55/overview/serie-a', color: 'from-blue-500 to-blue-800' },
@@ -66,6 +67,11 @@ export interface Match {
   tournament: string | null;
   last_updated: string;
 }
+
+// Leagues whose rows are one-per-EVENT rather than one-per-matchup: home_team
+// carries the event name (tournament, race weekend, fight card) and away_team is
+// null by design. Row filters must not drop these for the missing away side.
+export const SINGLE_ENTRY_LEAGUES = new Set(['golf', 'f1', 'nascar', 'ufc']);
 
 // The competition-level name a row's tournament string belongs to, used for the
 // Match Center filter chips and the LiveRail context label. The raw strings are

@@ -722,6 +722,7 @@ const LEAGUE_TO_SPORT_CATEGORIES = {
     mls: ['Football'],
     championship: ['Football'],
     golf: ['Golf'],
+    nascar: ['NASCAR', 'Motorsport'],
 };
 
 // 9. READING DATA (The GET Route - 'read operation')
@@ -1676,6 +1677,101 @@ app.get('/api/matches/:id/summary', (req, res) => {
             } catch (fetchErr) {
                 console.error('Error fetching golf leaderboard:', fetchErr.message);
                 return respond(404, { error: 'No leaderboard available for this match' });
+            }
+        }
+
+        // Racing (F1/NASCAR): a driver leaderboard from the event's most meaningful
+        // session - the Race once it has run, else the latest completed session
+        // (practice/qualifying), labeled so the frontend can say which it is. Same
+        // scoreboard-refetch approach as golf; series_id stores the racing slug.
+        if (row.league_id === 'f1' || row.league_id === 'nascar') {
+            if (!row.series_id || !String(row.external_id).startsWith('racing-')) {
+                return respond(404, { error: 'No results available for this event' });
+            }
+            const eventId = String(row.external_id).slice('racing-'.length);
+            const start = new Date(row.start_time);
+            if (isNaN(start.getTime())) {
+                return respond(404, { error: 'No results available for this event' });
+            }
+            try {
+                const fmtDay = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
+                const dayMs = 24 * 60 * 60 * 1000;
+                // start_time is the RACE session; the weekend begins two days earlier
+                const range = `${fmtDay(new Date(start.getTime() - 4 * dayMs))}-${fmtDay(new Date(start.getTime() + 2 * dayMs))}`;
+                const url = `https://site.api.espn.com/apis/site/v2/sports/racing/${encodeURIComponent(row.series_id)}/scoreboard?dates=${range}`;
+                const espnRes = await fetch(url);
+                if (!espnRes.ok) return respond(404, { error: 'No results available for this event' });
+                const json = await espnRes.json();
+                const event = (json.events || []).find((e) => String(e.id) === eventId);
+                const comps = event?.competitions || [];
+                const race = comps.find((c) => c.type?.abbreviation === 'Race') || comps[comps.length - 1];
+                const finished = (c) => c && c.status?.type?.state !== 'pre';
+                const session = finished(race) ? race : [...comps].reverse().find(finished);
+                const competitors = session?.competitors || [];
+                if (competitors.length === 0 || !competitors.some((c) => c.order != null)) {
+                    return respond(404, { error: 'No results available for this event' });
+                }
+                const leaderboard = [...competitors]
+                    .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity))
+                    .map((c) => ({
+                        position: c.order ?? null,
+                        name: c.athlete?.displayName || null,
+                        flag: c.athlete?.flag?.href || null,
+                        // Racing scoreboards expose finishing order only - no times
+                        score: null,
+                        rounds: [],
+                    }));
+                return respond(200, {
+                    leaderboard,
+                    round: [session.type?.text || session.type?.abbreviation, session.status?.type?.detail]
+                        .filter(Boolean).join(' · ') || null,
+                });
+            } catch (fetchErr) {
+                console.error('Error fetching racing results:', fetchErr.message);
+                return respond(404, { error: 'No results available for this event' });
+            }
+        }
+
+        // UFC: the bout-by-bout fight card. ESPN lists bouts chronologically
+        // (prelims first, main event last), so the list is reversed to read main
+        // event first. No clean finish-method field exists in this feed (only a
+        // play-by-play-ish details stream), so bouts carry names/records/winner
+        // flags and status.
+        if (row.league_id === 'ufc') {
+            if (!String(row.external_id).startsWith('mma-')) {
+                return respond(404, { error: 'No fight card available for this event' });
+            }
+            const eventId = String(row.external_id).slice('mma-'.length);
+            const start = new Date(row.start_time);
+            if (isNaN(start.getTime())) {
+                return respond(404, { error: 'No fight card available for this event' });
+            }
+            try {
+                const fmtDay = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
+                const dayMs = 24 * 60 * 60 * 1000;
+                const range = `${fmtDay(new Date(start.getTime() - dayMs))}-${fmtDay(new Date(start.getTime() + dayMs))}`;
+                const url = `https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard?dates=${range}`;
+                const espnRes = await fetch(url);
+                if (!espnRes.ok) return respond(404, { error: 'No fight card available for this event' });
+                const json = await espnRes.json();
+                const event = (json.events || []).find((e) => String(e.id) === eventId);
+                const bouts = [...(event?.competitions || [])].reverse();
+                if (bouts.length === 0) return respond(404, { error: 'No fight card available for this event' });
+                const fights = bouts.map((f) => ({
+                    status: f.status?.type?.state === 'in' ? 'live'
+                        : f.status?.type?.state === 'post' ? 'final' : 'scheduled',
+                    fighters: (f.competitors || []).map((c) => ({
+                        name: c.athlete?.displayName || null,
+                        record: (c.records || []).find((r) => r.name === 'overall')?.summary
+                            || c.records?.[0]?.summary || null,
+                        flag: c.athlete?.flag?.href || null,
+                        winner: !!c.winner,
+                    })),
+                }));
+                return respond(200, { fights });
+            } catch (fetchErr) {
+                console.error('Error fetching UFC fight card:', fetchErr.message);
+                return respond(404, { error: 'No fight card available for this event' });
             }
         }
 
