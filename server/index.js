@@ -1510,6 +1510,7 @@ const SUMMARY_CACHE_MS = 60 * 1000;
 // F1 race-time enrichment is a 22-call burst (one core-API call per driver), so it
 // caches longer than the summary itself - see the racing branch below.
 const racingTimesCache = new Map(); // race competition id -> { expiresAt, timesById }
+const racingVehiclesCache = new Map(); // race competition id -> { expiresAt, vehiclesById }
 const RACING_TIMES_CACHE_MS = 5 * 60 * 1000;
 
 // Build a full cricket scorecard from ESPN's cricket summary. The complete per-player
@@ -1726,6 +1727,44 @@ app.get('/api/matches/:id/summary', (req, res) => {
                 const json = await espnRes.json();
                 const event = (json.events || []).find((e) => String(e.id) === eventId);
                 const comps = event?.competitions || [];
+                // Car/team info (founder-requested): the scoreboard competitors
+                // carry no vehicle data, but the core-API competitor object does -
+                // F1's vehicle.manufacturer IS the team ("Mercedes"), NASCAR has
+                // number + manufacturer ("#22 · Ford"). Entries never change
+                // mid-weekend, so the per-competitor burst runs once per event
+                // and caches for the server's lifetime (same pattern as the F1
+                // times burst); competitor ids are stable across an event's
+                // sessions, so one map serves every session's leaderboard.
+                const vehicleComp = comps.find((c) => c.type?.abbreviation === 'Race') || comps[comps.length - 1];
+                let vehiclesById = {};
+                if (vehicleComp && (vehicleComp.competitors || []).length > 0) {
+                    let vcached = racingVehiclesCache.get(String(vehicleComp.id));
+                    if (!vcached || vcached.expiresAt <= Date.now()) {
+                        const byId = {};
+                        await Promise.all((vehicleComp.competitors || []).map(async (c) => {
+                            try {
+                                const vurl = `https://sports.core.api.espn.com/v2/sports/racing/leagues/${encodeURIComponent(row.series_id)}/events/${encodeURIComponent(eventId)}/competitions/${encodeURIComponent(vehicleComp.id)}/competitors/${encodeURIComponent(c.id)}?lang=en`;
+                                const vres = await fetch(vurl);
+                                if (!vres.ok) return;
+                                const v = (await vres.json()).vehicle || {};
+                                const label = row.league_id === 'f1'
+                                    ? (v.manufacturer || null)
+                                    : [v.number ? `#${v.number}` : null, v.manufacturer || null].filter(Boolean).join(' · ') || null;
+                                if (label) byId[c.id] = label;
+                            } catch { /* that entry's line stays blank */ }
+                        }));
+                        vcached = {
+                            expiresAt: Object.keys(byId).length > 0 ? Infinity : Date.now() + RACING_TIMES_CACHE_MS,
+                            vehiclesById: byId,
+                        };
+                        racingVehiclesCache.set(String(vehicleComp.id), vcached);
+                        for (const [key, entry] of racingVehiclesCache) {
+                            if (entry.expiresAt <= Date.now()) racingVehiclesCache.delete(key);
+                        }
+                    }
+                    vehiclesById = vcached.vehiclesById;
+                }
+
                 // Every session with results, importance-first: ESPN lists sessions
                 // chronologically (FP1..Race), so reversing puts Race/Qual on top.
                 // The headline session stays duplicated in the top-level
@@ -1740,6 +1779,7 @@ app.get('/api/matches/:id/summary', (req, res) => {
                         // Racing scoreboards expose finishing order only - no times
                         score: null,
                         rounds: [],
+                        team: vehiclesById[competitor.id] || null,
                     }));
                 const sessions = [...comps].reverse()
                     .filter((c) => c.status?.type?.state !== 'pre' && (c.competitors || []).some((x) => x.order != null))

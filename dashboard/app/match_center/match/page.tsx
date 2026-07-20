@@ -47,6 +47,9 @@ interface GolfLeaderboardRow {
   score: string | null;
   // Strokes per completed round
   rounds: string[];
+  // Racing only - the entry line under the driver: F1 team ("Mercedes"),
+  // NASCAR car + make ("#22 · Ford"). Absent for golf.
+  team?: string | null;
 }
 interface MatchSummary {
   home?: { linescores: string[]; record: string | null };
@@ -268,6 +271,11 @@ function LeaderboardTable({ rows, all }: { rows: GolfLeaderboardRow[]; all: Golf
                   <img src={p.flag} alt="" className="inline-block w-4 h-3 object-cover rounded-[2px] mr-1.5 align-[-1px]" loading="lazy" />
                 )}
                 {p.name}
+                {p.team && (
+                  <span className="block font-normal text-[11px] text-gray-400 dark:text-gray-500 leading-tight">
+                    {p.team}
+                  </span>
+                )}
               </td>
               {Array.from({ length: roundCols }, (_, ri) => (
                 <td key={ri} className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-300">
