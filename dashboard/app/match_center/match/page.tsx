@@ -434,6 +434,18 @@ const FORMATION_TEMPLATES: Record<string, number[][]> = {
   '4-1-4-1': [[1], [2, 5, 6, 3], [4], [7, 8, 10, 11], [9]],  // observed
   '4-3-3': [[1], [2, 5, 6, 3], [8, 4, 10], [7, 9, 11]],      // constructed
   '4-5-1': [[1], [2, 5, 6, 3], [7, 8, 4, 10, 11], [9]],      // constructed
+  // Back-three formations, observed in granular MLS rosters (Aug 2026 sweep).
+  // Only the four-line ones are templated: three-line back-three shapes
+  // (3-4-3, 5-3-2, 5-4-1, 4-2-2-2) already band correctly and survive generic
+  // G/D/M/F letters, so templating them would override a working path for
+  // nothing. These three do not - with generic letters 3-4-1-2 collapses to
+  // 3-5-2, and 3-1-4-2 is wrong even WITH granular letters, because its
+  // holding player is labelled SW and bands read that as a fourth defender.
+  // Note the back three is NOT numbered alike across them: 4/5/6 is CD-L/CD/
+  // CD-R in 3-4-1-2 and 3-4-2-1, but CD/CD-R/CD-L in 3-1-4-2 - don't assume.
+  '3-4-1-2': [[1], [6, 5, 4], [2, 7, 8, 3], [9], [10, 11]],     // observed
+  '3-4-2-1': [[1], [6, 5, 4], [2, 7, 8, 3], [10, 11], [9]],     // observed
+  '3-1-4-2': [[1], [5, 4, 6], [8], [2, 7, 11, 3], [9, 10]],     // observed (n=1)
 };
 
 // Band index per position abbreviation: 0 GK, then defence → DM → midfield →
