@@ -634,7 +634,13 @@ function ReelsContent() {
   const appleAppId = process.env.NEXT_PUBLIC_APPLE_APP_STORE_ID;
   const storeLink = isIOSBrowser 
     ? `https://apps.apple.com/us/app/glide-sports/id${appleAppId}` 
-    : "https://play.google.com/store/apps/details?id=com.glidesports.app";
+    // Must match the Android applicationId in android/app/build.gradle and the
+    // appId in capacitor.config.ts, both com.glidesports.glide. This read
+    // com.glidesports.app, an id nothing is published under. storeLink is not
+    // rendered yet (the banner below is still "Coming Soon" text, so the value
+    // is currently dead code) - fixed now so whoever wires the banner up at
+    // launch doesn't inherit a Play Store link that 404s.
+    : "https://play.google.com/store/apps/details?id=com.glidesports.glide";
 
   return (
     // Swapped a plain screen-height unit for the dynamic viewport height unit, to prevent
