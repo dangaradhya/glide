@@ -61,3 +61,22 @@ Glide is built on a highly optimized, decoupled architecture separating the clie
 * **Product Analytics:** PostHog (User session tracking, feature usage, and conversion metrics mapped to anonymized user IDs).
 
 ---
+
+## 📦 Building the native apps
+
+Capacitor 8 compiles its Android libraries at **Java 21**, so a JDK older than 21 fails with `invalid source release: 21`. Android Studio's bundled JBR satisfies this; building from the CLI on a machine whose default `java` is older needs `JAVA_HOME` pointed at a JDK 21+.
+
+```bash
+cd dashboard
+npm run build                  # Next.js static export -> dashboard/out
+npx cap sync android           # copy web assets + refresh native plugins
+
+cd android
+JAVA_HOME=/snap/android-studio/current/jbr \
+ANDROID_HOME=$HOME/Android/Sdk \
+  ./gradlew assembleDebug
+```
+
+Run `npm run build` before every `cap sync` — Capacitor copies `dashboard/out`, so skipping it ships whatever web assets were there last.
+
+---
