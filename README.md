@@ -64,7 +64,18 @@ Glide is built on a highly optimized, decoupled architecture separating the clie
 
 ## 📦 Building the native apps
 
-Capacitor 8 compiles its Android libraries at **Java 21**, so a JDK older than 21 fails with `invalid source release: 21`. Android Studio's bundled JBR satisfies this; building from the CLI on a machine whose default `java` is older needs `JAVA_HOME` pointed at a JDK 21+.
+### JDK requirement: 21, and not newer
+
+The Android build sits in a narrow JDK window:
+
+* **Below 21** fails — Capacitor 8 compiles its Android libraries at Java 21 (`invalid source release: 21`).
+* **25 and up** fails — Gradle 8.14.3's Groovy cannot read class file major version 69 (`Unsupported class file major version 69`).
+
+So use a **full JDK 21–24 that includes `jlink`**. A trimmed JetBrains runtime without `jlink` fails later in the build (`jlink executable ... does not exist`), so IntelliJ's bundled JBR will not work.
+
+⚠️ Current Android Studio bundles JDK 25, which is *too new*. Point **Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** at a 21 rather than the bundled default.
+
+### Debug build
 
 ```bash
 cd dashboard
@@ -72,11 +83,40 @@ npm run build                  # Next.js static export -> dashboard/out
 npx cap sync android           # copy web assets + refresh native plugins
 
 cd android
-JAVA_HOME=/snap/android-studio/current/jbr \
-ANDROID_HOME=$HOME/Android/Sdk \
-  ./gradlew assembleDebug
+JAVA_HOME=/path/to/jdk-21 ANDROID_HOME=$HOME/Android/Sdk ./gradlew assembleDebug
 ```
 
 Run `npm run build` before every `cap sync` — Capacitor copies `dashboard/out`, so skipping it ships whatever web assets were there last.
+
+### Release build (signed)
+
+Release signing reads `android/keystore.properties`, which is gitignored. Without it, `assembleRelease` and `bundleRelease` fail with an explicit message rather than emitting an unsigned artifact.
+
+**One-time setup.** Generate the upload keystore and keep it somewhere backed up outside the repo:
+
+```bash
+keytool -genkeypair -v -keystore glide-release.jks \
+  -alias glide -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Then `cp android/keystore.properties.example android/keystore.properties` and fill in the four values (`storeFile` resolves relative to `android/`, or use an absolute path).
+
+> 🔑 **Back up the keystore and its passwords.** Google Play ties the listing to this key — lose it and you can never publish an update to the same app; leak it and someone else can sign builds as you.
+
+```bash
+cd dashboard/android
+JAVA_HOME=/path/to/jdk-21 ANDROID_HOME=$HOME/Android/Sdk ./gradlew bundleRelease
+# -> app/build/outputs/bundle/release/app-release.aab   (this is what Play wants)
+```
+
+### Google Sign-In needs the release certificate registered
+
+The Google OAuth Android client is keyed to the signing certificate's SHA-1, and the release keystore's SHA-1 differs from the debug one. Sign-in can therefore work in every debug build and fail in the Play build unless the release fingerprint is registered first:
+
+```bash
+keytool -list -v -keystore glide-release.jks -alias glide | grep SHA1
+```
+
+Add that fingerprint to the Android OAuth client in the Google Cloud Console alongside the existing debug one. If Play App Signing is enabled, also register the **App signing key** SHA-1 that Play shows after the first upload — Play re-signs the AAB with its own key, so the certificate users actually run is Play's, not yours.
 
 ---
