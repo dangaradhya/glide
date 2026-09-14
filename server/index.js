@@ -1400,9 +1400,29 @@ app.post('/api/matches', verifyScraper, (req, res) => {
             tournament = excluded.tournament,
             series_id = excluded.series_id,
             last_updated = CURRENT_TIMESTAMP
+        WHERE
+            -- Status-downgrade guard. ESPN's CDN occasionally serves a stale payload -
+            -- a final row flapped back to 'scheduled' for ~45 minutes after the Belgian
+            -- GP - and status is a clean 3-value ladder (see normalizeEspnStatus in
+            -- liveScores.js), so a batch that walks a row BACKWARDS is staleness, not news.
+            -- The guard sits on the whole DO UPDATE rather than on the status column alone
+            -- because a stale 'pre' payload also carries score_summary: null and clock: null
+            -- (the normalizers blank those while scheduled), so patching status by itself
+            -- would hold 'final' and still wipe the score line. A failed WHERE here is a
+            -- silent no-op in SQLite, so a stale batch simply leaves the good row intact.
+            (CASE excluded.status WHEN 'live' THEN 1 WHEN 'final' THEN 2 ELSE 0 END)
+                >= (CASE matches.status WHEN 'live' THEN 1 WHEN 'final' THEN 2 ELSE 0 END)
+            -- Escape hatch for genuine postponements, which DO legitimately move a row
+            -- back to scheduled. A real reschedule moves ESPN's event.date forward; a stale
+            -- response repeats the old one, so "start time moved later" separates the two
+            -- without tracking any state. datetime() returns NULL on anything it can't
+            -- parse, which fails this comparison and falls back to blocking - the safe way
+            -- to fail, since a stranded 'live' row self-heals and an un-finished match doesn't.
+            OR datetime(excluded.start_time) > datetime(matches.start_time)
     `;
 
     let upserted = 0;
+    let skipped = 0;
     let failed = 0;
     // One transaction for the whole batch: without it, several hundred rows each pay
     // their own commit/fsync, and that sustained write burst is what queued reads for
@@ -1417,8 +1437,17 @@ app.post('/api/matches', verifyScraper, (req, res) => {
                 m.home_logo ?? null, m.away_logo ?? null,
                 m.home_score, m.away_score, m.score_summary, m.status, m.start_time, m.clock,
                 m.tournament ?? null, m.series_id ?? null,
-            ], (err) => {
+            // Non-arrow so `this` is sqlite3's statement context: a DO UPDATE whose WHERE
+            // fails writes nothing and reports changes === 0, which is how a blocked
+            // downgrade is told apart from a normal write (both insert and update report 1,
+            // even when the update rewrites identical values). Logged rather than counted
+            // silently - without a line here a CDN flap looks exactly like a healthy cycle.
+            ], function (err) {
                 if (err) { failed++; console.error('Error upserting match:', err.message); }
+                else if (this.changes === 0) {
+                    skipped++;
+                    console.warn(`Skipped stale match update (status downgrade to '${m.status}'): ${m.vendor}:${m.external_id} ${m.home_team} v ${m.away_team}`);
+                }
                 else upserted++;
             });
         });
@@ -1427,7 +1456,7 @@ app.post('/api/matches', verifyScraper, (req, res) => {
                 console.error('Error committing matches batch:', commitErr.message);
                 return res.status(500).json({ error: 'Failed to commit matches batch' });
             }
-            res.status(failed > 0 ? 207 : 200).json({ upserted, failed });
+            res.status(failed > 0 ? 207 : 200).json({ upserted, skipped, failed });
         });
     });
 });
