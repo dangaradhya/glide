@@ -441,7 +441,8 @@ async function postMatchesBatch(matches, label) {
         });
         const body = await res.json();
         if (res.ok) {
-            console.log(`   💾 [${label}] Upserted ${body.upserted ?? matches.length} matches.`);
+            const stale = body.skipped ? ` (${body.skipped} stale downgrade${body.skipped === 1 ? '' : 's'} skipped)` : '';
+            console.log(`   💾 [${label}] Upserted ${body.upserted ?? matches.length} matches.${stale}`);
         } else {
             console.error(`   ⚠️ [${label}] /api/matches rejected the batch:`, JSON.stringify(body));
         }
